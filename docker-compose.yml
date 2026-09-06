@@ -1,0 +1,14 @@
+services:
+  motor-diagnosis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: edge_motor_diagnosis
+    volumes:
+      # Mount reports directory so output charts and HTML dashboard appear on the host
+      - ./reports:/app/reports
+      # Mount raw data directory if IEEE DataPort .mat files are present on host
+      - ./data/raw:/app/data/raw
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: python run_pipeline.py

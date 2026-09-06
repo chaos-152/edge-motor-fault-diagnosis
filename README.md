@@ -5,6 +5,7 @@
 [![Target: Raspberry Pi 4](https://img.shields.io/badge/Target-Raspberry%20Pi%204-red.svg)](https://www.raspberrypi.com/)
 [![Reference: BDCC 2025](https://img.shields.io/badge/DOI-10.3390%2Fbdcc9050121-green.svg)](https://doi.org/10.3390/bdcc9050121)
 [![Dataset: IEEE DataPort](https://img.shields.io/badge/Dataset-IEEE%20DataPort-orange.svg)](https://dx.doi.org/10.21227/fmnm-bn95)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
 
 **Author:** Sai Samanyu K (`231CS152`)  
 **Affiliation:** National Institute of Technology Karnataka (NITK)  
@@ -144,7 +145,7 @@ The trained Decision Tree identified a clear physical threshold in PSD feature s
 * Python 3.10+
 * Linux / macOS / Windows
 
-### Installation
+### Option A: Local Python Environment
 ```bash
 # 1. Clone the repository
 git clone https://github.com/chaos-152/edge-motor-fault-diagnosis.git
@@ -156,19 +157,27 @@ source .venv/bin/activate
 
 # 3. Install dependencies
 pip install -r requirements.txt
-```
 
-### Running the End-to-End Pipeline
-```bash
+# 4. Run the end-to-end pipeline
 python run_pipeline.py
 ```
-This command automatically:
-1. Loads and parses the IEEE DataPort dataset (or generates MCSA signals if raw files are absent).
-2. Computes SciPy Welch PSD and extracts 15 spectral/time-domain features.
-3. Trains and cross-validates SVM and Decision Tree classifiers.
-4. Executes offline edge inference verification.
-5. Runs the Edge vs. Cloud latency, memory, and bandwidth benchmark.
-6. Generates publication-ready figures in `reports/plots/` and compiles `reports/index.html`.
+
+### Option B: Docker (Zero-Configuration Reproducibility)
+Run the entire pipeline in an isolated container without installing Python dependencies on your host:
+
+```bash
+# Clone the repository
+git clone https://github.com/chaos-152/edge-motor-fault-diagnosis.git
+cd edge-motor-fault-diagnosis
+
+# Build and run with Docker Compose (outputs mount directly to ./reports on your host)
+docker compose up --build
+```
+Or using standalone Docker:
+```bash
+docker build -t edge-motor-diagnosis .
+docker run --rm -v $(pwd)/reports:/app/reports edge-motor-diagnosis
+```
 
 ### Running Automated Tests
 ```bash

@@ -1,0 +1,31 @@
+# Version control
+.git/
+.gitignore
+
+# Virtual environments
+.venv/
+.venv_pi/
+venv/
+env/
+
+# Python cache & compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Testing & profiling cache
+.pytest_cache/
+.coverage
+.cache/
+
+# Large raw dataset files (mounted via volume instead of copied into image)
+data/raw/*.mat
+data/raw/*.zip
+data/processed/*.npz
+data/processed/*.csv
+
+# Local reports
+reports/plots/*.png
+reports/*.json
+reports/index.html
