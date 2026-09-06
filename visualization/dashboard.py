@@ -425,11 +425,11 @@ def generate_html_dashboard(output_file: Path = config.REPORTS_DIR / "index.html
         </div>
 
         <!-- DEPLOYMENT GUIDE -->
-        <h2 class="section-title">Raspberry Pi Deployment Instructions (NITK Setup)</h2>
+        <h2 class="section-title">Raspberry Pi 4 Deployment Instructions</h2>
         <div class="card" style="margin-bottom: 30px;">
-            <p style="margin-bottom: 12px;">When you receive the Raspberry Pi Model 4 from your department at NITK, follow these simple steps:</p>
+            <p style="margin-bottom: 12px;">To deploy and run the diagnostic node on a Raspberry Pi Model 4, follow these steps:</p>
             <ol style="margin-left: 20px; line-height: 1.8;">
-                <li>Clone or copy the repository onto the Raspberry Pi: <code>git clone &lt;repo-url&gt;</code></li>
+                <li>Clone or copy the repository onto the Raspberry Pi: <code>git clone https://github.com/chaos-152/edge-motor-fault-diagnosis.git</code></li>
                 <li>Execute the automated deployment script: <code>bash edge/deploy_pi.sh</code></li>
                 <li>To start live standalone motor diagnosis: <code>source .venv_pi/bin/activate && python edge/edge_runtime.py</code></li>
                 <li>To enable automatic headless start on Raspberry Pi boot: <code>sudo systemctl enable --now induction-motor-monitor.service</code></li>
