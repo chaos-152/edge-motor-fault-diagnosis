@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Environments
+.venv/
+.venv_pi/
+env/
+venv/
+ENV/
+
+# Cache & Testing
+.cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local data cache (keep directory structure)
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*.npz
+data/processed/*.csv
+
+# Temporary files
+*.swp
+*.swo
+*~

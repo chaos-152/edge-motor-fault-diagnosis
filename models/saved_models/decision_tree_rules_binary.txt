@@ -1,0 +1,34 @@
+|--- fault_band_energy_ratio <= 0.02
+|   |--- spectral_flatness <= 0.00
+|   |   |--- current_kurtosis <= -1.67
+|   |   |   |--- class: 1
+|   |   |--- current_kurtosis >  -1.67
+|   |   |   |--- class: 0
+|   |--- spectral_flatness >  0.00
+|   |   |--- class: 1
+|--- fault_band_energy_ratio >  0.02
+|   |--- spectral_entropy <= 0.26
+|   |   |--- fundamental_power_db <= 2.67
+|   |   |   |--- class: 0
+|   |   |--- fundamental_power_db >  2.67
+|   |   |   |--- class: 1
+|   |--- spectral_entropy >  0.26
+|   |   |--- current_kurtosis <= -0.72
+|   |   |   |--- fault_band_energy_ratio <= 0.02
+|   |   |   |   |--- spectral_flatness <= 0.00
+|   |   |   |   |   |--- current_shape_factor <= 1.08
+|   |   |   |   |   |   |--- class: 1
+|   |   |   |   |   |--- current_shape_factor >  1.08
+|   |   |   |   |   |   |--- class: 0
+|   |   |   |   |--- spectral_flatness >  0.00
+|   |   |   |   |   |--- class: 1
+|   |   |   |--- fault_band_energy_ratio >  0.02
+|   |   |   |   |--- fault_band_energy_ratio <= 0.02
+|   |   |   |   |   |--- spectral_crest_factor <= 163.75
+|   |   |   |   |   |   |--- class: 0
+|   |   |   |   |   |--- spectral_crest_factor >  163.75
+|   |   |   |   |   |   |--- class: 1
+|   |   |   |   |--- fault_band_energy_ratio >  0.02
+|   |   |   |   |   |--- class: 1
+|   |   |--- current_kurtosis >  -0.72
+|   |   |   |--- class: 0

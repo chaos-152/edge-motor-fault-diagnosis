@@ -1,0 +1,79 @@
+|--- fault_band_energy_ratio <= 0.02
+|   |--- spectral_flatness <= 0.00
+|   |   |--- current_kurtosis <= -1.67
+|   |   |   |--- current_crest_factor <= 1.41
+|   |   |   |   |--- class: 1
+|   |   |   |--- current_crest_factor >  1.41
+|   |   |   |   |--- class: 4
+|   |   |--- current_kurtosis >  -1.67
+|   |   |   |--- class: 0
+|   |--- spectral_flatness >  0.00
+|   |   |--- spectral_spread_hz <= 11.04
+|   |   |   |--- spectral_flatness <= 0.00
+|   |   |   |   |--- class: 1
+|   |   |   |--- spectral_flatness >  0.00
+|   |   |   |   |--- sideband_left_db_rel <= -31.94
+|   |   |   |   |   |--- class: 2
+|   |   |   |   |--- sideband_left_db_rel >  -31.94
+|   |   |   |   |   |--- class: 2
+|   |   |--- spectral_spread_hz >  11.04
+|   |   |   |--- fundamental_power_db <= 0.10
+|   |   |   |   |--- spectral_flatness <= 0.00
+|   |   |   |   |   |--- current_shape_factor <= 1.12
+|   |   |   |   |   |   |--- class: 1
+|   |   |   |   |   |--- current_shape_factor >  1.12
+|   |   |   |   |   |   |--- class: 2
+|   |   |   |   |--- spectral_flatness >  0.00
+|   |   |   |   |   |--- class: 3
+|   |   |   |--- fundamental_power_db >  0.10
+|   |   |   |   |--- class: 4
+|--- fault_band_energy_ratio >  0.02
+|   |--- current_crest_factor <= 1.55
+|   |   |--- spectral_entropy <= 0.26
+|   |   |   |--- spectral_flatness <= 0.00
+|   |   |   |   |--- current_rms_a <= 1.06
+|   |   |   |   |   |--- class: 2
+|   |   |   |   |--- current_rms_a >  1.06
+|   |   |   |   |   |--- spectral_flatness <= 0.00
+|   |   |   |   |   |   |--- class: 1
+|   |   |   |   |   |--- spectral_flatness >  0.00
+|   |   |   |   |   |   |--- class: 2
+|   |   |   |--- spectral_flatness >  0.00
+|   |   |   |   |--- spectral_entropy <= 0.26
+|   |   |   |   |   |--- class: 2
+|   |   |   |   |--- spectral_entropy >  0.26
+|   |   |   |   |   |--- class: 3
+|   |   |--- spectral_entropy >  0.26
+|   |   |   |--- current_rms_a <= 1.09
+|   |   |   |   |--- spectral_spread_hz <= 13.70
+|   |   |   |   |   |--- class: 2
+|   |   |   |   |--- spectral_spread_hz >  13.70
+|   |   |   |   |   |--- class: 3
+|   |   |   |--- current_rms_a >  1.09
+|   |   |   |   |--- spectral_spread_hz <= 13.56
+|   |   |   |   |   |--- sideband_left_db_rel <= -31.34
+|   |   |   |   |   |   |--- class: 1
+|   |   |   |   |   |--- sideband_left_db_rel >  -31.34
+|   |   |   |   |   |   |--- class: 4
+|   |   |   |   |--- spectral_spread_hz >  13.56
+|   |   |   |   |   |--- spectral_spread_hz <= 13.62
+|   |   |   |   |   |   |--- class: 4
+|   |   |   |   |   |--- spectral_spread_hz >  13.62
+|   |   |   |   |   |   |--- class: 4
+|   |--- current_crest_factor >  1.55
+|   |   |--- current_rms_a <= 1.25
+|   |   |   |--- spectral_flatness <= 0.00
+|   |   |   |   |--- sideband_left_db_rel <= -13.72
+|   |   |   |   |   |--- class: 2
+|   |   |   |   |--- sideband_left_db_rel >  -13.72
+|   |   |   |   |   |--- class: 1
+|   |   |   |--- spectral_flatness >  0.00
+|   |   |   |   |--- current_crest_factor <= 1.57
+|   |   |   |   |   |--- class: 3
+|   |   |   |   |--- current_crest_factor >  1.57
+|   |   |   |   |   |--- spectral_centroid_hz <= 125.04
+|   |   |   |   |   |   |--- class: 0
+|   |   |   |   |   |--- spectral_centroid_hz >  125.04
+|   |   |   |   |   |   |--- class: 0
+|   |   |--- current_rms_a >  1.25
+|   |   |   |--- class: 4
