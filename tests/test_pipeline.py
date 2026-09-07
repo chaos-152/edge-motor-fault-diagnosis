@@ -92,8 +92,16 @@ def test_edge_runtime_inference(dataset):
     """Verifies that the edge diagnostic engine runs under latency budget with correct output."""
     classifier = EdgeFaultClassifier(model_type="decision_tree", target_type="binary")
 
-    sig_healthy, _ = dataset.generate_single_signal(fault_severity=0, load_torque_nm=2.0)
-    sig_faulty, _ = dataset.generate_single_signal(fault_severity=3, load_torque_nm=2.0)
+    processed_file = config.PROCESSED_DATA_DIR / "stator_current_dataset.npz"
+    if processed_file.exists():
+        signals, _, labels_bin, _ = dataset.load_processed_dataset()
+        idx_h = int(np.where(labels_bin == 0)[0][0])
+        idx_f = int(np.where(labels_bin == 1)[0][0])
+        sig_healthy = signals[idx_h]
+        sig_faulty = signals[idx_f]
+    else:
+        sig_healthy, _ = dataset.generate_single_signal(fault_severity=0, load_torque_nm=2.0)
+        sig_faulty, _ = dataset.generate_single_signal(fault_severity=3, load_torque_nm=2.0)
 
     res_h = classifier.diagnose_waveform(sig_healthy)
     res_f = classifier.diagnose_waveform(sig_faulty)
