@@ -123,33 +123,65 @@ class EdgeFaultClassifier:
 
 
 if __name__ == "__main__":
+    import argparse
     from data.dataset_loader import StatorCurrentDataset
-    dataset = StatorCurrentDataset()
 
-    print("Initializing Edge Diagnostic Engine (Decision Tree)...")
+    parser = argparse.ArgumentParser(description="Edge Fault Classifier Diagnostic Demo")
+    parser.add_argument("--torque", type=float, default=2.0, help="Mechanical load torque in Nm (0.5, 1.0, 2.0, 3.0, 4.0)")
+    parser.add_argument("--severity", type=int, default=3, help="Fault severity to test (1 to 4 broken rotor bars)")
+    parser.add_argument("--compare", action="store_true", help="Print comparative table across all load torque levels")
+    args = parser.parse_args()
+
     classifier = EdgeFaultClassifier(model_type="decision_tree", target_type="binary")
-
+    dataset = StatorCurrentDataset()
     processed_file = config.PROCESSED_DATA_DIR / "stator_current_dataset.npz"
+
+    if args.compare and processed_file.exists():
+        signals, labels_multi, labels_bin, metadata = dataset.load_processed_dataset()
+        print("\n" + "=" * 80)
+        print(f"{'Torque':<10} | {'Healthy (0 BRB)':<18} | {f'Faulty ({args.severity} BRB)':<18} | {'Delta Elevation':<16} | {'Diagnosis'}")
+        print("=" * 80)
+        for t_val in [0.5, 1.0, 2.0, 3.0, 4.0]:
+            h_idx = [i for i, m in enumerate(metadata) if m["load_torque_nm"] == t_val and m["fault_severity"] == 0]
+            f_idx = [i for i, m in enumerate(metadata) if m["load_torque_nm"] == t_val and m["fault_severity"] == args.severity]
+            if h_idx and f_idx:
+                res_h = classifier.diagnose_waveform(signals[h_idx[0]])
+                res_f = classifier.diagnose_waveform(signals[f_idx[0]])
+                delta = res_f["sideband_power_db"] - res_h["sideband_power_db"]
+                print(f"{t_val} Nm    | {res_h['sideband_power_db']:>8.2f} dB        | {res_f['sideband_power_db']:>8.2f} dB        | {delta:>+8.2f} dB       | {res_f['status']}")
+        print("=" * 80)
+        sys.exit(0)
+
     if processed_file.exists():
-        signals, _, labels_bin, _ = dataset.load_processed_dataset()
-        idx_h = int(np.where(labels_bin == 0)[0][0])
-        idx_f = int(np.where(labels_bin == 1)[0][0])
+        signals, labels_multi, labels_bin, metadata = dataset.load_processed_dataset()
+        h_idx = [i for i, m in enumerate(metadata) if m["load_torque_nm"] == args.torque and m["fault_severity"] == 0]
+        f_idx = [i for i, m in enumerate(metadata) if m["load_torque_nm"] == args.torque and m["fault_severity"] == args.severity]
+
+        idx_h = h_idx[0] if h_idx else int(np.where(labels_bin == 0)[0][0])
+        idx_f = f_idx[0] if f_idx else int(np.where(labels_bin == 1)[0][0])
         sig_h = signals[idx_h]
         sig_f = signals[idx_f]
+        load_used = metadata[idx_h]["load_torque_nm"]
+        sev_used = metadata[idx_f]["fault_severity"]
     else:
-        sig_h, _ = dataset.generate_single_signal(fault_severity=0, load_torque_nm=2.0)
-        sig_f, _ = dataset.generate_single_signal(fault_severity=3, load_torque_nm=2.0)
+        sig_h, _ = dataset.generate_single_signal(fault_severity=0, load_torque_nm=args.torque)
+        sig_f, _ = dataset.generate_single_signal(fault_severity=args.severity, load_torque_nm=args.torque)
+        load_used = args.torque
+        sev_used = args.severity
+
+    print(f"Initializing Edge Diagnostic Engine (Decision Tree) at {load_used} Nm Load...")
 
     # Test on Healthy Signal
     res_h = classifier.diagnose_waveform(sig_h)
-    print("\n--- Diagnostic Result: Healthy Motor ---")
+    print(f"\n--- Diagnostic Result: Healthy Motor (0 BRB at {load_used} Nm) ---")
     print(f"Status:             {res_h['status']}")
     print(f"Sideband Relative:  {res_h['sideband_power_db']:.2f} dB")
     print(f"Total Edge Latency: {res_h['latency']['total_edge_ms']:.3f} ms")
 
     # Test on Faulty Signal
     res_f = classifier.diagnose_waveform(sig_f)
-    print("\n--- Diagnostic Result: Faulty Motor (Broken Rotor Bar) ---")
+    print(f"\n--- Diagnostic Result: Faulty Motor ({sev_used} BRB at {load_used} Nm) ---")
     print(f"Status:             {res_f['status']}")
     print(f"Sideband Relative:  {res_f['sideband_power_db']:.2f} dB")
+    print(f"Sideband Elevation: {res_f['sideband_power_db'] - res_h['sideband_power_db']:+.2f} dB")
     print(f"Total Edge Latency: {res_f['latency']['total_edge_ms']:.3f} ms")
