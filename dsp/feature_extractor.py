@@ -101,10 +101,14 @@ class MCSAFeatureExtractor:
             rms_val = 2.5
 
         if estimated_slip is None:
-            # Linear interpolation based on nominal motor curves:
-            # 1.8 A RMS -> slip ~0.012 (0.5 Nm), 3.8 A RMS -> slip ~0.054 (4.0 Nm)
-            normalized_load = np.clip((rms_val - 1.8) / (3.8 - 1.8), 0.0, 1.0)
-            estimated_slip = float(0.012 + normalized_load * (0.054 - 0.012))
+            # Linear interpolation based on motor operating curves:
+            # Empirical Treml et al. motor draws ~1.04 A at 0.5 Nm up to ~1.66 A at 4.0 Nm.
+            # Synthetic / 220V setup draws ~1.8 A to 3.8 A.
+            if rms_val < 1.75:
+                normalized_load = np.clip((rms_val - 1.0) / (1.7 - 1.0), 0.0, 1.0)
+            else:
+                normalized_load = np.clip((rms_val - 1.8) / (3.8 - 1.8), 0.0, 1.0)
+            estimated_slip = float(0.012 + normalized_load * (0.050 - 0.012))
 
         # Expected sideband frequencies: fb = fs * (1 +/- 2s)
         expected_f_left = fund_freq * (1.0 - 2.0 * estimated_slip)
