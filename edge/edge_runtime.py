@@ -129,18 +129,27 @@ if __name__ == "__main__":
     print("Initializing Edge Diagnostic Engine (Decision Tree)...")
     classifier = EdgeFaultClassifier(model_type="decision_tree", target_type="binary")
 
+    processed_file = config.PROCESSED_DATA_DIR / "stator_current_dataset.npz"
+    if processed_file.exists():
+        signals, _, labels_bin, _ = dataset.load_processed_dataset()
+        idx_h = int(np.where(labels_bin == 0)[0][0])
+        idx_f = int(np.where(labels_bin == 1)[0][0])
+        sig_h = signals[idx_h]
+        sig_f = signals[idx_f]
+    else:
+        sig_h, _ = dataset.generate_single_signal(fault_severity=0, load_torque_nm=2.0)
+        sig_f, _ = dataset.generate_single_signal(fault_severity=3, load_torque_nm=2.0)
+
     # Test on Healthy Signal
-    sig_h, _ = dataset.generate_single_signal(fault_severity=0, load_torque_nm=2.0)
     res_h = classifier.diagnose_waveform(sig_h)
     print("\n--- Diagnostic Result: Healthy Motor ---")
     print(f"Status:             {res_h['status']}")
     print(f"Sideband Relative:  {res_h['sideband_power_db']:.2f} dB")
     print(f"Total Edge Latency: {res_h['latency']['total_edge_ms']:.3f} ms")
 
-    # Test on Faulty Signal (3 Broken Bars)
-    sig_f, _ = dataset.generate_single_signal(fault_severity=3, load_torque_nm=2.0)
+    # Test on Faulty Signal
     res_f = classifier.diagnose_waveform(sig_f)
-    print("\n--- Diagnostic Result: Faulty Motor (3 BRB) ---")
+    print("\n--- Diagnostic Result: Faulty Motor (Broken Rotor Bar) ---")
     print(f"Status:             {res_f['status']}")
     print(f"Sideband Relative:  {res_f['sideband_power_db']:.2f} dB")
     print(f"Total Edge Latency: {res_f['latency']['total_edge_ms']:.3f} ms")
