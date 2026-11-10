@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
-from scipy import stats
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import config
@@ -26,32 +25,38 @@ class MCSAFeatureExtractor:
         "sideband_right_db_rel",      # Right sideband power relative to fundamental (dB)
         "sideband_mean_db_rel",       # Mean sideband power relative to fundamental (dB)
         "sideband_asymmetry_db",      # Difference between left and right sideband power (dB)
-        "fault_band_energy_ratio",    # Energy in fault sideband region / total band energy
-        "fundamental_power_db",       # Absolute power of fundamental (dB/Hz)
+        "fault_band_energy_ratio",    # Energy in fault sideband region / low-band energy
+        "fundamental_energy_ratio",   # Fundamental carrier energy / low-band energy (scale-invariant)
 
-        # Spectral Domain Statistical Features
-        "spectral_centroid_hz",       # Center of mass of the spectrum
-        "spectral_spread_hz",         # Standard deviation of spectrum frequencies
-        "spectral_flatness",          # Geometric mean / arithmetic mean of power
+        # Grid-Frequency-Normalized Spectral Statistical Features
+        "spectral_centroid_ratio",    # Spectral center of mass normalized by fundamental frequency
+        "spectral_spread_ratio",      # Spectral spread normalized by fundamental frequency
+        "spectral_flatness",          # Geometric mean / arithmetic mean of normalized PSD
         "spectral_crest_factor",      # Peak PSD / Mean PSD
         "spectral_entropy",           # Shannon entropy of normalized PSD distribution
 
-        # Time-Domain Stator Current Features
-        "current_rms_a",              # Root Mean Square current (Amperes)
+        # Per-Unit Stator Current Time-Domain Features
+        "load_current_pu",            # Per-unit RMS current (I_rms / I_rated)
         "current_kurtosis",           # Kurtosis of current signal (peakedness)
         "current_crest_factor",       # Peak-to-RMS ratio
-        "current_shape_factor"        # RMS / Mean absolute deviation
+        "current_shape_factor"        # RMS / Mean absolute value
     ]
 
     def __init__(
         self,
         psd_extractor: Optional[WelchPSDExtractor] = None,
         fs: int = config.TARGET_SAMPLING_RATE_HZ,
-        supply_freq_hz: float = config.SUPPLY_FREQUENCY_HZ
+        supply_freq_hz: Optional[float] = None,
+        i_noload_a: float = config.MOTOR_NOLOAD_CURRENT_A,
+        i_rated_a: float = config.MOTOR_RATED_CURRENT_A
     ):
         self.psd_extractor = psd_extractor or WelchPSDExtractor(fs=fs)
         self.fs = fs
+        if supply_freq_hz is None and not config.SUPPLY_FREQUENCY_AUTO_DETECT:
+            supply_freq_hz = config.SUPPLY_FREQUENCY_HZ
         self.supply_freq = supply_freq_hz
+        self.i_noload_a = float(i_noload_a)
+        self.i_rated_a = float(i_rated_a)
 
     def extract_from_signal(
         self,
@@ -59,21 +64,25 @@ class MCSAFeatureExtractor:
         estimated_slip: Optional[float] = None
     ) -> Tuple[np.ndarray, Dict[str, float]]:
         """
-        Extracts feature vector from a raw 1D current signal.
+        Extracts feature vector from a raw 1D current signal using single-pass Welch PSD.
 
         Args:
             signal_array: 1D stator current time series.
-            estimated_slip: Motor operating slip. If None, estimated from nominal range.
+            estimated_slip: Motor operating slip. If None, estimated from per-unit load curve.
 
         Returns:
             feature_vector: 1D numpy array of length len(FEATURE_NAMES).
-            feature_dict: Dictionary mapping feature name to scalar value.
+            feature_dict: Dictionary mapping feature names and telemetry metadata to scalars.
         """
-        frequencies, psd_db = self.psd_extractor.compute_psd(signal_array, return_db=True)
-        # Also compute linear PSD for energy integrals and spectral moments
-        _, psd_lin = self.psd_extractor.compute_psd(signal_array, return_db=False)
+        rms_val = float(np.sqrt(np.mean(signal_array ** 2))) + 1e-12
+        sig_pu = signal_array / rms_val
 
-        return self.extract_from_psd(frequencies, psd_db, psd_lin, signal_array, estimated_slip)
+        frequencies, psd_lin = self.psd_extractor.compute_psd(sig_pu, return_db=False)
+        psd_db = 10.0 * np.log10(np.maximum(psd_lin, 1e-30))
+
+        return self.extract_from_psd(
+            frequencies, psd_db, psd_lin, signal_array=signal_array, estimated_slip=estimated_slip
+        )
 
     def extract_from_psd(
         self,
@@ -84,29 +93,31 @@ class MCSAFeatureExtractor:
         estimated_slip: Optional[float] = None
     ) -> Tuple[np.ndarray, Dict[str, float]]:
         """
-        Extracts features when PSD is already computed.
+        Extracts scale-invariant & grid-frequency-normalized features from PSD.
         """
-        # 1. Locate Fundamental Peak (fs ~ 60 Hz)
+        # 1. Locate Fundamental Peak (auto-detects 50 Hz / 60 Hz unless fixed)
         fund_peaks = self.psd_extractor.find_spectral_peaks(
             frequencies, psd_db, fund_target_hz=self.supply_freq, search_radius_hz=2.5
         )
         fund_freq = fund_peaks["fundamental_freq_hz"]
         fund_power_db = fund_peaks["fundamental_power"]
 
-        # 2. Estimate slip from stator current RMS if not provided
-        # Induction motor current scales monotonically with mechanical load and slip
+        # 2. Compute RMS & calibrate slip from per-unit load curve
         if signal_array is not None and len(signal_array) > 0:
             rms_val = float(np.sqrt(np.mean(signal_array ** 2)))
+            sig_pu = signal_array / max(rms_val, 1e-12)
         else:
-            rms_val = 2.5
+            rms_val = self.i_rated_a
+            sig_pu = None
+
+        load_pu = float(rms_val / max(self.i_rated_a, 1e-12))
 
         if estimated_slip is None:
-            # Linear interpolation based on motor operating curves:
-            # Empirical Treml et al. motor draws ~1.04 A at 0.5 Nm up to ~1.66 A at 4.0 Nm.
-            # Synthetic / 220V setup draws ~1.8 A to 3.8 A.
-            if rms_val < 1.75:
-                normalized_load = np.clip((rms_val - 1.0) / (1.7 - 1.0), 0.0, 1.0)
+            if rms_val <= self.i_rated_a * 1.15:
+                denom = max(self.i_rated_a - self.i_noload_a, 1e-6)
+                normalized_load = np.clip((rms_val - self.i_noload_a) / denom, 0.0, 1.0)
             else:
+                # Fallback for higher-current synthetic waveforms (1.8 A - 3.8 A)
                 normalized_load = np.clip((rms_val - 1.8) / (3.8 - 1.8), 0.0, 1.0)
             estimated_slip = float(0.012 + normalized_load * (0.050 - 0.012))
 
@@ -121,7 +132,6 @@ class MCSAFeatureExtractor:
             if len(indices) < 3:
                 return fund_power_db - 55.0
 
-            # Find local peaks
             peak_powers = []
             for idx in indices[1:-1]:
                 if psd_db[idx] > psd_db[idx - 1] and psd_db[idx] > psd_db[idx + 1]:
@@ -129,9 +139,7 @@ class MCSAFeatureExtractor:
 
             if peak_powers:
                 return max(peak_powers)
-            else:
-                # If no distinct local peak, take the median of the search zone
-                return float(np.median(psd_db[indices]))
+            return float(np.median(psd_db[indices]))
 
         left_peak_db = find_best_sideband_peak(expected_f_left)
         right_peak_db = find_best_sideband_peak(expected_f_right)
@@ -141,52 +149,48 @@ class MCSAFeatureExtractor:
         sb_mean_rel = (sb_left_rel + sb_right_rel) / 2.0
         sb_asym = abs(sb_left_rel - sb_right_rel)
 
-        # 4. Fault Band Energy Ratio (10 Hz to 120 Hz zone)
-        # Sideband power zone vs total band power
-        low_band_mask = (frequencies >= 10.0) & (frequencies <= 120.0)
+        # 4. Fault Band & Fundamental Energy Ratios (frequency bands relative to detected fs)
+        low_band_mask = (frequencies >= 0.15 * fund_freq) & (frequencies <= 2.0 * fund_freq)
         fund_exclusion_mask = (frequencies >= fund_freq - 1.2) & (frequencies <= fund_freq + 1.2)
         fault_sideband_energy_mask = low_band_mask & (~fund_exclusion_mask)
 
-        total_band_energy = float(np.sum(psd_lin[low_band_mask])) + 1e-12
+        total_band_energy = float(np.sum(psd_lin[low_band_mask])) + 1e-30
         sideband_energy = float(np.sum(psd_lin[fault_sideband_energy_mask]))
+        fund_band_energy = float(np.sum(psd_lin[fund_exclusion_mask]))
+
         fault_band_energy_ratio = sideband_energy / total_band_energy
+        fundamental_energy_ratio = fund_band_energy / total_band_energy
 
-        # 4. Spectral Domain Statistical Features (calculated in 0-250 Hz range)
-        analysis_mask = (frequencies >= 5.0) & (frequencies <= 250.0)
-        f_sub = frequencies[analysis_mask]
-        p_sub = np.maximum(psd_lin[analysis_mask], 1e-12)
-        p_norm = p_sub / (np.sum(p_sub) + 1e-12)
+        # 5. Grid-Frequency-Normalized Spectral Statistical Features (0.08*fs to 4.2*fs)
+        analysis_mask = (frequencies >= 0.08 * fund_freq) & (frequencies <= 4.2 * fund_freq)
+        f_sub_ratio = frequencies[analysis_mask] / max(fund_freq, 1e-6)
+        p_raw = psd_lin[analysis_mask]
+        p_norm_total = p_raw / (float(np.sum(p_raw)) + 1e-30)
+        p_sub = np.maximum(p_norm_total, 1e-12)
+        p_norm = p_sub / np.sum(p_sub)
 
-        # Spectral Centroid
-        spectral_centroid = float(np.sum(f_sub * p_norm))
+        spectral_centroid_ratio = float(np.sum(f_sub_ratio * p_norm))
+        spectral_spread_ratio = float(np.sqrt(np.sum(((f_sub_ratio - spectral_centroid_ratio) ** 2) * p_norm)))
 
-        # Spectral Spread
-        spectral_spread = float(np.sqrt(np.sum(((f_sub - spectral_centroid) ** 2) * p_norm)))
-
-        # Spectral Flatness (Geometric Mean / Arithmetic Mean)
-        # Using exp(mean(log)) to avoid underflow
         geo_mean = np.exp(np.mean(np.log(p_sub)))
         arith_mean = np.mean(p_sub)
         spectral_flatness = float(geo_mean / (arith_mean + 1e-12))
-
-        # Spectral Crest Factor (Peak PSD / Mean PSD)
         spectral_crest = float(np.max(p_sub) / (arith_mean + 1e-12))
 
-        # Spectral Entropy
         p_entropy = -np.sum(p_norm * np.log2(p_norm + 1e-12))
         max_entropy = np.log2(len(p_norm))
         spectral_entropy = float(p_entropy / (max_entropy + 1e-12))
 
-        # 5. Time-Domain Features
-        if signal_array is not None and len(signal_array) > 0:
-            rms_val = float(np.sqrt(np.mean(signal_array ** 2)))
-            peak_val = float(np.max(np.abs(signal_array)))
-            mean_abs = float(np.mean(np.abs(signal_array))) + 1e-12
-            kurt_val = float(stats.kurtosis(signal_array))
-            crest_factor = float(peak_val / (rms_val + 1e-12))
-            shape_factor = float(rms_val / mean_abs)
+        # 6. Scale-Invariant Time-Domain Waveform Shape Statistics (on per-unit signal)
+        if sig_pu is not None and len(sig_pu) > 0:
+            peak_pu = float(np.max(np.abs(sig_pu)))
+            mean_abs_pu = float(np.mean(np.abs(sig_pu))) + 1e-12
+            centered = sig_pu - np.mean(sig_pu)
+            m2 = float(np.mean(centered ** 2))
+            kurt_val = float(np.mean(centered ** 4) / (m2 * m2 + 1e-30) - 3.0)
+            crest_factor = peak_pu  # Since RMS of sig_pu is 1.0
+            shape_factor = float(1.0 / mean_abs_pu)
         else:
-            rms_val = 2.5
             kurt_val = -1.5
             crest_factor = np.sqrt(2.0)
             shape_factor = 1.11
@@ -197,16 +201,20 @@ class MCSAFeatureExtractor:
             "sideband_mean_db_rel": float(sb_mean_rel),
             "sideband_asymmetry_db": float(sb_asym),
             "fault_band_energy_ratio": float(fault_band_energy_ratio),
-            "fundamental_power_db": float(fund_power_db),
-            "spectral_centroid_hz": float(spectral_centroid),
-            "spectral_spread_hz": float(spectral_spread),
+            "fundamental_energy_ratio": float(fundamental_energy_ratio),
+            "spectral_centroid_ratio": float(spectral_centroid_ratio),
+            "spectral_spread_ratio": float(spectral_spread_ratio),
             "spectral_flatness": float(spectral_flatness),
             "spectral_crest_factor": float(spectral_crest),
             "spectral_entropy": float(spectral_entropy),
-            "current_rms_a": float(rms_val),
+            "load_current_pu": float(load_pu),
             "current_kurtosis": float(kurt_val),
             "current_crest_factor": float(crest_factor),
-            "current_shape_factor": float(shape_factor)
+            "current_shape_factor": float(shape_factor),
+            # Human-readable telemetry keys (excluded from ML feature_vector)
+            "current_rms_a": float(rms_val),
+            "fundamental_freq_hz": float(fund_freq),
+            "estimated_slip": float(estimated_slip),
         }
 
         feature_vector = np.array([feature_dict[name] for name in self.FEATURE_NAMES], dtype=np.float32)

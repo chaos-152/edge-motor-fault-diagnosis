@@ -9,7 +9,10 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple, Union
 
 import numpy as np
-from scipy import signal
+try:
+    from scipy import signal
+except ImportError:
+    signal = None
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import config
@@ -18,6 +21,7 @@ import config
 class WelchPSDExtractor:
     """
     Computes Welch's Power Spectral Density matching MATLAB pwelch behavior.
+    Uses scipy.signal.welch when installed, falling back to an identical NumPy FFT implementation.
     """
 
     def __init__(
@@ -35,6 +39,32 @@ class WelchPSDExtractor:
         self.noverlap = noverlap
         self.nfft = nfft
         self.scaling = scaling
+        self._hann_win = np.hanning(self.nperseg + 1)[:-1]
+        self._psd_scale = 1.0 / (self.fs * float(np.sum(self._hann_win ** 2)))
+
+    def _numpy_welch(self, x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """Pure-NumPy Welch PSD fallback matching scipy.signal.welch with periodic Hann window."""
+        step = max(1, self.nperseg - self.noverlap)
+        psd_accum = None
+        count = 0
+        for start in range(0, max(1, len(x) - self.nperseg + 1), step):
+            seg = x[start : start + self.nperseg]
+            if len(seg) < self.nperseg:
+                padded = np.zeros(self.nperseg, dtype=np.float64)
+                padded[: len(seg)] = seg - np.mean(seg)
+                seg_detrend = padded
+            else:
+                seg_detrend = seg - np.mean(seg)
+            spec = np.fft.rfft(seg_detrend * self._hann_win, n=self.nfft)
+            pwr = (np.abs(spec) ** 2) * self._psd_scale
+            if self.nfft % 2 == 0:
+                pwr[1:-1] *= 2.0
+            else:
+                pwr[1:] *= 2.0
+            psd_accum = pwr if psd_accum is None else (psd_accum + pwr)
+            count += 1
+        frequencies = np.fft.rfftfreq(self.nfft, d=1.0 / self.fs)
+        return frequencies, psd_accum / max(1, count)
 
     def compute_psd(
         self,
@@ -55,21 +85,22 @@ class WelchPSDExtractor:
         if x.ndim != 1:
             x = np.squeeze(x)
 
-        # scipy.signal.welch: detrend='constant' matches MATLAB pwelch default mean removal
-        frequencies, pxx = signal.welch(
-            x,
-            fs=self.fs,
-            window=self.window,
-            nperseg=self.nperseg,
-            noverlap=self.noverlap,
-            nfft=self.nfft,
-            scaling=self.scaling,
-            detrend="constant",
-            return_onesided=True
-        )
+        if signal is not None:
+            frequencies, pxx = signal.welch(
+                x,
+                fs=self.fs,
+                window=self.window,
+                nperseg=self.nperseg,
+                noverlap=self.noverlap,
+                nfft=self.nfft,
+                scaling=self.scaling,
+                detrend="constant",
+                return_onesided=True
+            )
+        else:
+            frequencies, pxx = self._numpy_welch(x)
 
         if return_db:
-            # Add small epsilon to avoid log(0)
             eps = 1e-12
             pxx_db = 10.0 * np.log10(np.maximum(pxx, eps))
             return frequencies, pxx_db
@@ -104,18 +135,28 @@ class WelchPSDExtractor:
         self,
         frequencies: np.ndarray,
         psd: np.ndarray,
-        fund_target_hz: float = config.SUPPLY_FREQUENCY_HZ,
+        fund_target_hz: Optional[float] = None,
         search_radius_hz: float = 3.0
     ) -> Dict[str, float]:
         """
         Locates the exact fundamental peak in the PSD.
+        If fund_target_hz is None, auto-detects the grid fundamental within [45, 65] Hz
+        (supporting both 50 Hz and 60 Hz installations).
         """
-        fund_mask = (frequencies >= fund_target_hz - search_radius_hz) & (frequencies <= fund_target_hz + search_radius_hz)
+        if fund_target_hz is None:
+            fund_mask = (frequencies >= 45.0) & (frequencies <= 65.0)
+            target_fallback = config.SUPPLY_FREQUENCY_HZ
+        else:
+            fund_mask = (frequencies >= fund_target_hz - search_radius_hz) & (
+                frequencies <= fund_target_hz + search_radius_hz
+            )
+            target_fallback = fund_target_hz
+
         if not np.any(fund_mask):
-            fund_idx = np.argmin(np.abs(frequencies - fund_target_hz))
+            fund_idx = int(np.argmin(np.abs(frequencies - target_fallback)))
         else:
             fund_indices = np.where(fund_mask)[0]
-            fund_idx = fund_indices[np.argmax(psd[fund_indices])]
+            fund_idx = int(fund_indices[np.argmax(psd[fund_indices])])
 
         actual_fund_freq = float(frequencies[fund_idx])
         fund_power = float(psd[fund_idx])
@@ -123,15 +164,15 @@ class WelchPSDExtractor:
         return {
             "fundamental_freq_hz": actual_fund_freq,
             "fundamental_power": fund_power,
-            "fundamental_idx": int(fund_idx)
+            "fundamental_idx": fund_idx
         }
 
 
 if __name__ == "__main__":
     extractor = WelchPSDExtractor()
-    t = np.linspace(0, 1.0, 5000, endpoint=False)
+    t = np.linspace(0, 2.0, int(2.0 * extractor.fs), endpoint=False)
     test_sig = np.sin(2 * np.pi * 60.0 * t) + 0.1 * np.sin(2 * np.pi * 56.4 * t)
     f, psd_db = extractor.compute_psd(test_sig, return_db=True)
-    peaks = extractor.find_spectral_peaks(f, psd_db, fund_target_hz=60.0)
+    peaks = extractor.find_spectral_peaks(f, psd_db)
     print(f"Computed Welch PSD: {len(f)} frequency bins (0 to {f[-1]} Hz)")
     print(f"Identified fundamental: {peaks['fundamental_freq_hz']:.2f} Hz at {peaks['fundamental_power']:.2f} dB/Hz")

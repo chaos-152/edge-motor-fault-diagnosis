@@ -124,6 +124,8 @@ class StatorCurrentDataset:
                             win_signal = decimated[start_i:end_i]
 
                             if len(win_signal) == samples_per_window:
+                                if float(np.sqrt(np.mean(win_signal ** 2))) < config.MIN_ACTIVE_CURRENT_A:
+                                    continue
                                 signals.append(win_signal.astype(np.float32))
                                 labels_multi.append(fault_level)
                                 labels_bin.append(int(fault_level > 0))

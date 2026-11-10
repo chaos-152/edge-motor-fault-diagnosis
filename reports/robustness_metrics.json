@@ -1,0 +1,38 @@
+{
+  "n_unseen_test_samples": 245,
+  "holdout_repetitions": [
+    8,
+    9
+  ],
+  "scenarios": {
+    "clean_unseen_recordings": {
+      "DecisionTree": 0.9918367346938776,
+      "SVM": 0.9959183673469387
+    },
+    "calibrated_gain_x2.5": {
+      "DecisionTree": 0.9918367346938776,
+      "SVM": 0.9959183673469387
+    },
+    "uncalibrated_gain_x1.5": {
+      "DecisionTree": 0.9918367346938776,
+      "SVM": 0.8163265306122449
+    },
+    "uncalibrated_gain_x0.5": {
+      "DecisionTree": 0.9918367346938776,
+      "SVM": 0.8040816326530612
+    },
+    "noise_sigma_0.05A": {
+      "DecisionTree": 0.8163265306122449,
+      "SVM": 0.8163265306122449
+    },
+    "noise_sigma_0.08A": {
+      "DecisionTree": 0.8,
+      "SVM": 0.8163265306122449
+    },
+    "synthetic_50hz_cross_grid": {
+      "DecisionTree": 0.5,
+      "SVM": 0.5,
+      "n_samples": 2
+    }
+  }
+}

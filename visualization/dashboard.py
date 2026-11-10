@@ -40,16 +40,36 @@ def generate_html_dashboard(output_file: Path = config.REPORTS_DIR / "index.html
 
     # Metrics shorthand
     lat_dt = bench_data.get("latency", {}).get("edge_decision_tree", {})
+    lat_sc = bench_data.get("latency", {}).get("edge_single_core_dt", lat_dt)
     lat_svm = bench_data.get("latency", {}).get("edge_svm", {})
-    lat_cloud = bench_data.get("latency", {}).get("cloud_aws_ec2", {})
-    speedup = bench_data.get("latency", {}).get("speedup_dt_vs_cloud", 105.4)
+    lat_cloud = bench_data.get("latency", {}).get("cloud_simulated_baseline") or bench_data.get("latency", {}).get("cloud_aws_ec2", {})
+    speedup = bench_data.get("latency", {}).get("speedup_dt_vs_cloud", 100.0)
 
     res = bench_data.get("resources", {})
     bw = bench_data.get("bandwidth", {})
+    hw = bench_data.get("hardware_environment", {})
 
     models = bench_data.get("model_accuracies", {})
-    acc_dt = models.get("DecisionTree", {}).get("test_accuracy", 0.9933) * 100
-    acc_svm = models.get("SVM", {}).get("test_accuracy", 0.9933) * 100
+    acc_dt = models.get("DecisionTree", {}).get("test_accuracy", 0.0) * 100
+    acc_svm = models.get("SVM", {}).get("test_accuracy", 0.0) * 100
+    f1_dt = models.get("DecisionTree", {}).get("test_f1", 0.0)
+    f1_svm = models.get("SVM", {}).get("test_f1", 0.0)
+    loto_dt = (models.get("DecisionTree", {}).get("loto_accuracy_mean") or 0.0) * 100
+    loto_svm = (models.get("SVM", {}).get("loto_accuracy_mean") or 0.0) * 100
+
+    multi = bench_data.get("model_accuracies_multiclass", {})
+    m_acc_dt = multi.get("DecisionTree", {}).get("test_accuracy", 0.0) * 100
+    m_acc_svm = multi.get("SVM", {}).get("test_accuracy", 0.0) * 100
+
+    rob = bench_data.get("robustness_audit", {})
+    rob_scenarios = rob.get("scenarios", {})
+    rob_rows_html = ""
+    for sc_name, sc_vals in rob_scenarios.items():
+        rob_rows_html += (
+            f"<tr><td><code>{sc_name}</code></td>"
+            f"<td><strong>{sc_vals.get('DecisionTree', 0.0)*100:.2f}%</strong></td>"
+            f"<td><strong>{sc_vals.get('SVM', 0.0)*100:.2f}%</strong></td></tr>\n"
+        )
 
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
@@ -261,16 +281,16 @@ def generate_html_dashboard(output_file: Path = config.REPORTS_DIR / "index.html
         <!-- HEADER -->
         <header>
             <h1>Edge-Based Fault Diagnosis of Induction Motors</h1>
-            <div class="subtitle">A Lightweight Machine Learning Approach on Raspberry Pi</div>
+            <div class="subtitle">A Lightweight Machine Learning Architecture (Local Linux / ARM64 Edge)</div>
             <div>
                 <strong>Author:</strong> Sai Samanyu K (231CS152) &bull; National Institute of Technology Karnataka (NITK)
             </div>
             <div class="badges">
                 <span class="badge">predictive maintenance</span>
                 <span class="badge">edge ai</span>
-                <span class="badge">iiot</span>
-                <span class="badge">raspberry pi 4</span>
-                <span class="badge">scipy welch psd</span>
+                <span class="badge">zero-leakage validation</span>
+                <span class="badge">linux / arm64 portable</span>
+                <span class="badge">scipy / numpy welch psd</span>
                 <span class="badge">doi: 10.3390/bdcc9050121</span>
             </div>
         </header>
@@ -279,23 +299,23 @@ def generate_html_dashboard(output_file: Path = config.REPORTS_DIR / "index.html
         <div class="grid-4">
             <div class="card card-kpi">
                 <div class="label">Edge Decision Tree Latency</div>
-                <div class="value success">{lat_dt.get('mean_ms', 1.66):.2f} ms</div>
-                <div class="subtext">p95: {lat_dt.get('p95_ms', 2.50):.2f} ms &bull; Sub-millisecond compute</div>
+                <div class="value success">{lat_dt.get('mean_ms', 0.0):.2f} ms</div>
+                <div class="subtext">Single-Core: {lat_sc.get('mean_ms', 0.0):.2f} ms &bull; p95: {lat_dt.get('p95_ms', 0.0):.2f} ms</div>
             </div>
             <div class="card card-kpi">
-                <div class="label">Edge Acceleration vs AWS EC2</div>
+                <div class="label">Speedup vs Simulated Cloud</div>
                 <div class="value success">{speedup:.1f}&times;</div>
-                <div class="subtext">Cloud RTT: {lat_cloud.get('mean_ms', 175.2):.1f} ms vs Edge: {lat_dt.get('mean_ms', 1.66):.2f} ms</div>
+                <div class="subtext">Simulated RTT: {lat_cloud.get('mean_ms', 0.0):.1f} ms &bull; Literature model</div>
             </div>
             <div class="card card-kpi">
-                <div class="label">Test Classification Accuracy</div>
-                <div class="value success">{acc_dt:.1f}%</div>
-                <div class="subtext">SVM: {acc_svm:.1f}% &bull; Weighted F1: 0.993</div>
+                <div class="label">Unseen Recording Accuracy</div>
+                <div class="value success">{acc_dt:.1f}% / {acc_svm:.1f}%</div>
+                <div class="subtext">DT / SVM Binary (F1: {f1_dt:.3f} / {f1_svm:.3f}) &bull; Zero leakage</div>
             </div>
             <div class="card card-kpi">
                 <div class="label">Ingestion Bandwidth Saved</div>
                 <div class="value success">{bw.get('bandwidth_reduction_percent', 100.0):.1f}%</div>
-                <div class="subtext">Cloud: ~{bw.get('cloud_data_gb_per_month', 38.6):.1f} GB/mo &bull; Edge: Alarms only</div>
+                <div class="subtext">Stream: ~{bw.get('cloud_data_gb_per_month', 19.3):.1f} GiB/mo &bull; Edge: Alarms only</div>
             </div>
         </div>
 
@@ -303,24 +323,24 @@ def generate_html_dashboard(output_file: Path = config.REPORTS_DIR / "index.html
         <h2 class="section-title">System Pipeline Architecture</h2>
         <div class="pipeline-steps">
             <div class="step">
-                <h4>Phase 1: Acquisition</h4>
-                <p>3-Phase Stator Current signals from IEEE DataPort (Treml 2020) at varying mechanical loads (0.5 to 4.0 Nm).</p>
+                <h4>Phase 1: Empirical Ingestion</h4>
+                <p>IEEE DataPort (Treml et al., 2020) steady-state currents across 5 torque loads (0.5&ndash;4.0 Nm) &amp; 0&ndash;4 broken bars.</p>
             </div>
             <div class="step">
-                <h4>Phase 2: Welch PSD</h4>
-                <p>SciPy Welch's Method (MATLAB pwelch equivalent) extracts MCSA sidebands: f<sub>brb</sub> = f<sub>s</sub>(1 &plusmn; 2s).</p>
+                <h4>Phase 2: Hardened DSP</h4>
+                <p>Per-unit normalized Welch PSD auto-detecting 50/60 Hz fundamentals and MCSA sidebands f<sub>brb</sub> = f<sub>s</sub>(1 &plusmn; 2s).</p>
             </div>
             <div class="step">
-                <h4>Phase 3: Edge Training</h4>
-                <p>Edge-viable model selection (SVM & Decision Tree) omitting expensive Bayesian tuning to maximize edge efficiency.</p>
+                <h4>Phase 3: Leak-Free Training</h4>
+                <p>Strictly grouped by independent physical recordings (holdout reps 8&ndash;9) with Leave-One-Torque-Out verification.</p>
             </div>
             <div class="step">
-                <h4>Phase 4: Pi Deployment</h4>
-                <p>Lightweight inference engine running locally on Raspberry Pi Model 4 (offline, zero-cloud dependency).</p>
+                <h4>Phase 4: Portable Edge</h4>
+                <p>Single-pass offline inference engine + dependency-free JSON Decision Tree executable with NumPy alone on ARM64/Linux.</p>
             </div>
             <div class="step">
-                <h4>Phase 5: Benchmark</h4>
-                <p>Empirical profiling against AWS EC2 cloud baseline measuring Latency, Memory RSS, CPU %, and Bandwidth.</p>
+                <h4>Phase 5: Honest Benchmark</h4>
+                <p>Measured local host &amp; single-core affinity latency vs. simulated cloud baseline and domain-shift stress tests.</p>
             </div>
         </div>
 
@@ -328,112 +348,139 @@ def generate_html_dashboard(output_file: Path = config.REPORTS_DIR / "index.html
         <h2 class="section-title">Signal Processing & Diagnostic Visualizations</h2>
         <div class="grid-2">
             <div class="plot-box">
-                <h3>1. Time-Domain Stator Current (200 ms Window)</h3>
+                <h3>1. Time-Domain Stator Current (200 ms Matched-Torque Window)</h3>
                 <img src="{plot_time_domain}" alt="Stator Current Time Domain Waveform">
             </div>
             <div class="plot-box">
-                <h3>2. Welch PSD Spectrum & Broken Rotor Bar Sidebands</h3>
+                <h3>2. Welch PSD Spectrum &amp; Broken Rotor Bar Sidebands</h3>
                 <img src="{plot_psd}" alt="Welch PSD MCSA Spectrum">
             </div>
             <div class="plot-box">
-                <h3>3. Model Confusion Matrices (Test Set)</h3>
+                <h3>3. Confusion Matrices (Strictly Unseen Recording Holdout)</h3>
                 <img src="{plot_cm}" alt="SVM and Decision Tree Confusion Matrices">
             </div>
             <div class="plot-box">
-                <h3>4. Empirical Benchmarks (Edge vs. Cloud)</h3>
+                <h3>4. Measured Edge vs. Simulated Cloud Benchmarks</h3>
                 <img src="{plot_bench}" alt="Latency and Bandwidth Benchmark Comparison">
             </div>
         </div>
 
         <!-- DETAILED BENCHMARK TABLE -->
-        <h2 class="section-title">Detailed Empirical Benchmark Results</h2>
+        <h2 class="section-title">Latency &amp; Accuracy Breakdown (Zero Within-Recording Leakage)</h2>
         <div class="table-responsive">
             <table>
                 <thead>
                     <tr>
                         <th>Architecture / Platform</th>
                         <th>Mean Latency</th>
-                        <th>Median Latency</th>
                         <th>95th Percentile</th>
-                        <th>Network Data Rate</th>
-                        <th>Classification Accuracy</th>
+                        <th>Binary Acc (Unseen Reps)</th>
+                        <th>Multiclass Acc (0&ndash;4 BRB)</th>
+                        <th>LOTO Binary Mean</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td><strong>Edge: Decision Tree</strong> (Raspberry Pi 4)</td>
-                        <td><span style="color: var(--success); font-weight: 700;">{lat_dt.get('mean_ms', 1.66):.3f} ms</span></td>
-                        <td>{lat_dt.get('median_ms', 1.60):.3f} ms</td>
-                        <td>{lat_dt.get('p95_ms', 2.50):.3f} ms</td>
-                        <td>0 KB/s (Local)</td>
+                        <td><strong>Measured Edge: Decision Tree</strong> ({hw.get('machine_arch', 'local')} host)</td>
+                        <td><span style="color: var(--success); font-weight: 700;">{lat_dt.get('mean_ms', 0.0):.3f} ms</span></td>
+                        <td>{lat_dt.get('p95_ms', 0.0):.3f} ms</td>
                         <td><strong>{acc_dt:.2f}%</strong></td>
+                        <td><strong>{m_acc_dt:.2f}%</strong></td>
+                        <td>{loto_dt:.2f}%</td>
                     </tr>
                     <tr>
-                        <td><strong>Edge: Support Vector Machine</strong> (Raspberry Pi 4)</td>
-                        <td><span style="color: var(--success); font-weight: 700;">{lat_svm.get('mean_ms', 1.95):.3f} ms</span></td>
-                        <td>{lat_svm.get('median_ms', 1.90):.3f} ms</td>
-                        <td>{lat_svm.get('p95_ms', 3.02):.3f} ms</td>
-                        <td>0 KB/s (Local)</td>
+                        <td><strong>Measured Edge: Decision Tree</strong> (1-Core Pinned)</td>
+                        <td><span style="color: var(--success); font-weight: 700;">{lat_sc.get('mean_ms', 0.0):.3f} ms</span></td>
+                        <td>{lat_sc.get('p95_ms', 0.0):.3f} ms</td>
+                        <td>Same serialized model</td>
+                        <td>Same serialized model</td>
+                        <td>&mdash;</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Measured Edge: Support Vector Machine</strong> ({hw.get('machine_arch', 'local')} host)</td>
+                        <td><span style="color: var(--success); font-weight: 700;">{lat_svm.get('mean_ms', 0.0):.3f} ms</span></td>
+                        <td>{lat_svm.get('p95_ms', 0.0):.3f} ms</td>
                         <td><strong>{acc_svm:.2f}%</strong></td>
+                        <td><strong>{m_acc_svm:.2f}%</strong></td>
+                        <td>{loto_svm:.2f}%</td>
                     </tr>
                     <tr>
-                        <td><strong>Cloud: AWS EC2 Baseline</strong> (Walani &amp; Doorsamy 2025)</td>
+                        <td><strong>Simulated Cloud Baseline</strong> (AWS EC2 Model &mdash; <em>Walani 2025</em>)</td>
                         <td><span style="color: var(--danger); font-weight: 700;">{lat_cloud.get('mean_ms', 175.26):.3f} ms</span></td>
-                        <td>{lat_cloud.get('median_ms', 173.1):.3f} ms</td>
                         <td>{lat_cloud.get('p95_ms', 221.3):.3f} ms</td>
-                        <td>~{bw.get('cloud_data_mb_per_day', 1318.4):.1f} MB / day</td>
-                        <td>98.00%</td>
+                        <td><em>Simulated network model</em></td>
+                        <td><em>Simulated network model</em></td>
+                        <td>&mdash;</td>
                     </tr>
                 </tbody>
             </table>
         </div>
 
+        <!-- DOMAIN SHIFT & ROBUSTNESS TABLE -->
+        <h2 class="section-title">Real-World Robustness &amp; Perturbation Stress Audit (Unseen Reps 8&ndash;9)</h2>
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Perturbation / Domain Shift Scenario</th>
+                        <th>Decision Tree Binary Accuracy</th>
+                        <th>SVM Binary Accuracy</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rob_rows_html}
+                </tbody>
+            </table>
+        </div>
+
         <!-- HARDWARE & RESOURCE FOOTPRINT -->
-        <h2 class="section-title">Resource Footprint Under Continuous Load</h2>
+        <h2 class="section-title">Measured Resource Footprint Under Sustained Load</h2>
         <div class="table-responsive">
             <table>
                 <thead>
                     <tr>
                         <th>Metric</th>
                         <th>Measured Value</th>
-                        <th>Edge Suitability / Implication</th>
+                        <th>Methodology Note</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td>Baseline Process Memory</td>
-                        <td>{res.get('baseline_memory_mb', 167.45):.2f} MB</td>
-                        <td>Easily fits within Raspberry Pi 4 (2 GB / 4 GB / 8 GB RAM)</td>
+                        <td>Host Measurement Environment</td>
+                        <td>{hw.get('os', 'Linux')} ({hw.get('machine_arch', 'x86_64')}, {hw.get('logical_cpus', '?')} CPUs)</td>
+                        <td>Direct wall-clock measurement via <code>perf_counter</code> and <code>psutil</code></td>
                     </tr>
                     <tr>
-                        <td>Peak Memory Under 300+ Continuous Cycles</td>
-                        <td>{res.get('peak_memory_mb', 167.45):.2f} MB</td>
-                        <td>Stable memory profile; no memory escalation under continuous monitoring</td>
+                        <td>Baseline / Peak RSS Memory</td>
+                        <td>{res.get('baseline_memory_mb', 0.0):.2f} MB / {res.get('peak_memory_mb', 0.0):.2f} MB</td>
+                        <td>Comfortably within embedded Linux RAM budgets (e.g., 1&ndash;4 GB boards)</td>
                     </tr>
                     <tr>
-                        <td>Memory RSS Growth (Leak Check)</td>
+                        <td>Memory RSS Growth (300 Continuous Cycles)</td>
                         <td><strong style="color: var(--success);">{res.get('memory_growth_mb', 0.0):.2f} MB</strong></td>
-                        <td>Zero memory leak detected over sustained inference load</td>
+                        <td>Zero memory leak over continuous diagnostic cycles</td>
                     </tr>
                     <tr>
-                        <td>Inference Throughput</td>
-                        <td><strong>{res.get('throughput_inferences_per_sec', 662.9):.1f} predictions/sec</strong></td>
-                        <td>Substantially exceeds typical 1-second sampling window requirements</td>
+                        <td>Sustained Throughput</td>
+                        <td><strong>{res.get('throughput_inferences_per_sec', 0.0):.1f} windows/sec</strong></td>
+                        <td>Real-time budget for 2.0s window is 0.5 windows/sec (&gt;1000&times; headroom)</td>
                     </tr>
                 </tbody>
             </table>
         </div>
 
         <!-- DEPLOYMENT GUIDE -->
-        <h2 class="section-title">Raspberry Pi 4 Deployment Instructions</h2>
+        <h2 class="section-title">Portable Deployment Guide (PC, Android Termux ARM64, or Raspberry Pi)</h2>
         <div class="card" style="margin-bottom: 30px;">
-            <p style="margin-bottom: 12px;">To deploy and run the diagnostic node on a Raspberry Pi Model 4, follow these steps:</p>
+            <p style="margin-bottom: 12px;">The portable inference engine runs identically with only Python + NumPy (no scikit-learn or SciPy required):</p>
             <ol style="margin-left: 20px; line-height: 1.8;">
-                <li>Clone or copy the repository onto the Raspberry Pi: <code>git clone https://github.com/chaos-152/edge-motor-fault-diagnosis.git</code></li>
-                <li>Execute the automated deployment script: <code>bash edge/deploy_pi.sh</code></li>
-                <li>To start live standalone motor diagnosis: <code>source .venv_pi/bin/activate && python edge/edge_runtime.py</code></li>
-                <li>To enable automatic headless start on Raspberry Pi boot: <code>sudo systemctl enable --now induction-motor-monitor.service</code></li>
+                <li><strong>Portable NumPy-Only Edge Demo (ARM64 / Termux / Linux):</strong> <code>python edge/portable_edge.py --stream</code></li>
+                <li><strong>Torque-by-Torque MCSA Inspection:</strong> <code>python edge/edge_runtime.py --compare</code></li>
+                <li><strong>Optional Raspberry Pi Systemd Setup (ARM64 Linux):</strong> <code>bash edge/deploy_pi.sh</code></li>
             </ol>
+            <p style="margin-top: 12px; color: #6b7280; font-size: 0.9rem;">
+                <strong>Scope Note:</strong> Trained and validated on one 1 HP, 4-pole, 34-bar motor (Treml et al., 2020). Transfer to motors with different nameplate ratings requires calibrating <code>MOTOR_NOLOAD_CURRENT_A</code> / <code>MOTOR_RATED_CURRENT_A</code> or retraining on target machine signatures.
+            </p>
         </div>
 
         <footer>

@@ -1,252 +1,179 @@
-# Edge-Based Fault Diagnosis of Induction Motors: A Lightweight Machine Learning Approach on Raspberry Pi
+# Edge-Based Fault Diagnosis of Induction Motors: A Lightweight Edge-AI Architecture
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
-[![Target: Raspberry Pi 4](https://img.shields.io/badge/Target-Raspberry%20Pi%204-red.svg)](https://www.raspberrypi.com/)
+[![Target: Linux / ARM64](https://img.shields.io/badge/Edge-Linux%20%7C%20ARM64%20Ready-red.svg)](https://github.com/chaos-152/edge-motor-fault-diagnosis)
 [![Reference: BDCC 2025](https://img.shields.io/badge/DOI-10.3390%2Fbdcc9050121-green.svg)](https://doi.org/10.3390/bdcc9050121)
 [![Dataset: IEEE DataPort](https://img.shields.io/badge/Dataset-IEEE%20DataPort-orange.svg)](https://dx.doi.org/10.21227/fmnm-bn95)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
 
 **Author:** Sai Samanyu K (`231CS152`)  
 **Affiliation:** National Institute of Technology Karnataka (NITK)  
-**Keywords:** Edge AI &bull; Predictive Maintenance (PdM) &bull; Industrial IoT (IIoT) &bull; Motor Current Signature Analysis (MCSA) &bull; Raspberry Pi 4
+**Keywords:** Edge AI &bull; Predictive Maintenance (PdM) &bull; Industrial IoT (IIoT) &bull; Motor Current Signature Analysis (MCSA) &bull; Zero-Leakage Validation
 
 ---
 
 ## 1. Overview & Motivation
 
-Industrial condition monitoring of rotating electrical machinery is a cornerstone of Predictive Maintenance (PdM) and Industrial IoT. This project reproduces and adapts the comparative condition monitoring framework established by:
+Industrial condition monitoring of rotating electrical machinery is a cornerstone of Predictive Maintenance (PdM). This project reproduces and adapts the comparative condition monitoring framework established by:
 
 > **Walani, C. C., & Doorsamy, W. (2025).**  
 > *Edge vs. Cloud: Empirical Insights into Data-Driven Condition Monitoring.*  
 > **Big Data and Cognitive Computing (BDCC)**, MDPI, 9(5), 121. [DOI: 10.3390/bdcc9050121](https://doi.org/10.3390/bdcc9050121).
 
-### The Edge AI Paradigm Shift
-Traditional cloud-based architectures (such as the MATLAB + AWS EC2 framework analyzed in the original study) require streaming high-frequency raw electrical waveforms across wireless/cellular links to remote servers. This introduces significant limitations:
-* **Network Latency:** Typical round-trip times of 150–250 ms across industrial gateways.
-* **Bandwidth Overhead:** Streaming raw stator currents consumes ~38.6 GB/month per monitored machine.
-* **Cloud & Infrastructure Cost:** Ongoing cloud compute, ingress, and software licensing fees (e.g. MATLAB).
-* **Connectivity Dependency:** Network interruptions halt real-time protection.
+### From Proprietary Cloud to Portable Open-Source Edge
+Traditional cloud architectures stream continuous raw waveforms over wireless links to remote servers, introducing latency (`150–250 ms`), continuous uplink ingestion (`~19.3 GiB/month` single-phase at 2 kHz), recurring cloud/MATLAB license fees, and blind spots during network outages.
 
-This repository translates the end-to-end diagnostic pipeline into an **open-source, edge-native Python architecture** optimized for localized offline execution on a **Raspberry Pi Model 4**:
-1. **Signal Processing:** Replaces proprietary MATLAB `pwelch` with `scipy.signal.welch` to extract Motor Current Signature Analysis (MCSA) sidebands.
-2. **Lightweight ML:** Replaces compute-heavy Bayesian optimization with compact, interpretable Decision Trees (3.1 KB) and Support Vector Machines (SVM).
-3. **Empirical Ground Truth:** Validated on the benchmark **IEEE DataPort empirical dataset** (*Treml et al., 2020*).
+This repository implements an **open-source, edge-native Python pipeline** verified locally on Linux x86_64 and designed for portable ARM64 deployment (Android Termux or Raspberry Pi-class boards via NumPy-only execution):
+1. **Per-Unit Signal Processing:** Replaces MATLAB `pwelch` with single-pass SciPy/NumPy Welch PSD extraction, auto-detecting `50 Hz` or `60 Hz` fundamentals and normalizing waveforms to per-unit scale.
+2. **Active-Motor Data Hygiene:** Filters unpowered motor runs (`RMS < 0.15 A`, e.g., an unenergized trial at 0.5 Nm in `struct_rs_R1.mat`) at both training and inference time to prevent false broken-bar alarms on sensor noise.
+3. **Zero-Leakage Evaluation:** Splits train/test strictly by **independent experimental recordings** (holdout repetitions `8–9`, zero shared recordings between splits), plus Leave-One-Torque-Out (LOTO) and perturbation stress tests.
+4. **Portable Dependency-Free Runtime:** Exports trained Decision Trees to compact JSON (`1.1 KB`) runnable in `edge/portable_edge.py` using Python + NumPy alone (no `scikit-learn` or `SciPy` required at inference).
 
 ```
 +---------------------------------------------------------------------------------------------------+
 |                                      SYSTEM PIPELINE ARCHITECTURE                                 |
 +---------------------------------------------------------------------------------------------------+
 |                                                                                                   |
-|  [3-Phase Induction Motor]                                                                        |
+|  [IEEE DataPort Recordings]     (Treml et al., 2020: 1,245 active 2.0s windows across 249 runs)   |
 |            |                                                                                      |
 |            v                                                                                      |
-|  [Phase 1: Stator Current Data]  (Official IEEE DataPort / Treml et al., 2020)                    |
+|  [Active Current Gate + Per-Unit Welch PSD]  (Skip RMS < 0.15A; auto-detect 50/60 Hz fundamental) |
 |            |                                                                                      |
 |            v                                                                                      |
-|  [Phase 2: Signal Processing]    (SciPy Welch's PSD - MATLAB pwelch equivalent & Sideband MCSA)   |
-|            |                     Harmonics: fb = fs * (1 ± 2ks), k=1,2,3                          |
-|            v                                                                                      |
-|  [Phase 3: Model Training]       (scikit-learn: SVM & Decision Tree, Edge-viable selection)       |
+|  [15 Normalized MCSA Features]  (Relative sidebands fs(1 ± 2s), energy ratios, moments, load pu)  |
 |            |                                                                                      |
 |            v                                                                                      |
-|  [Phase 4: Edge Deployment]      (Lightweight offline inference engine on Raspberry Pi 4)         |
+|  [Recording-Grouped ML Training] (SVM 6.8 KB & Decision Tree 2.3 KB + 1.1 KB JSON export)         |
 |            |                                                                                      |
 |            v                                                                                      |
-|  [Phase 5: Benchmarking]         (Edge Latency vs AWS EC2 Cloud Round-Trip, CPU/RAM Footprint)    |
+|  [Local Edge Benchmarks & Domain-Shift Audit] (Measured local host vs Simulated cloud RTT model)  |
 |                                                                                                   |
 +---------------------------------------------------------------------------------------------------+
 ```
 
 ---
 
-## 2. Key Empirical Results
+## 2. Honest Evaluation & Empirical Results
 
-Evaluated across 1,250 empirical analysis windows from the official IEEE DataPort testbed and benchmarked against an AWS EC2 cloud baseline:
+Evaluated across **1,245 active empirical windows** (excluding 5 dead-motor noise windows from `struct_rs_R1.mat` torque `0.5 Nm` rep `8`) with **strict recording-grouped splitting**: `1,000` training windows (`repetitions 0–7`, 200 recordings) and `245` completely unseen test windows (`repetitions 8–9`, 49 recordings).
 
-| Metric | Edge Node (Raspberry Pi 4 / Local) | Cloud Baseline (AWS EC2) | Edge AI Advantage |
-| :--- | :--- | :--- | :--- |
-| **Inference Latency (Decision Tree)** | **1.48 ms** (p95: 1.82 ms) | 175.26 ms (p95: 221.3 ms) | **118.0&times; Faster** |
-| **Inference Latency (SVM)** | **1.60 ms** (p95: 1.94 ms) | 175.26 ms (p95: 221.3 ms) | **109.4&times; Faster** |
-| **Binary Classification Accuracy** | **100.00%** (Decision Tree) / **99.20%** (SVM) | 98.00% | **Empirical Ground Truth** |
-| **Multiclass Accuracy (0 to 4 Broken Bars)** | **94.80%** (Decision Tree) / **94.40%** (SVM) | ~90–92% | **High Granularity** |
-| **Ingestion Network Bandwidth** | **0.625 KB / day** (Alarms only) | 1,318.4 MB / day (~38.6 GB / month) | **100% Bandwidth Reduction** |
-| **Model Size (Decision Tree)** | **3.1 KB** | Server-hosted | **Ultra-lightweight footprint** |
-| **Model Size (SVM Pipeline)** | **22.8 KB** | Server-hosted | **Compact edge binary** |
-| **Memory Growth Under Sustained Load** | **0.00 MB** | N/A | **Zero Memory Leak** |
-| **Inference Throughput** | **652.5 predictions / sec** | ~6 predictions / sec (network-bound) | **High Real-Time Headroom** |
+### Classification Accuracy (Zero Within-Recording Leakage)
 
----
+| Task & Split Protocol | Decision Tree (2.3 KB) | SVM RBF Pipeline (6.8–44.5 KB) | Notes |
+| :--- | :---: | :---: | :--- |
+| **Binary (Healthy vs. Faulty) — 5-Fold GroupKFold** | 98.90% &plusmn; 1.96% | **100.00% &plusmn; 0.00%** | Strict recording-grouped CV |
+| **Binary (Healthy vs. Faulty) — Unseen Reps 8&ndash;9** | **99.18%** (`F1: 0.9918`) | **99.59%** (`F1: 0.9959`) | Zero shared 20s recordings |
+| **Binary Leave-One-Torque-Out (Unseen Loads)** | **92.64%** mean | 91.96% mean | Per-torque: 81.2%–100.0% (DT) / 80.0%–100.0% (SVM) |
+| **Multiclass (0–4 Broken Bars) — 5-Fold GroupKFold** | 90.70% &plusmn; 2.18% | **99.40% &plusmn; 0.97%** | SVM strongly outperforms DT on bar count |
+| **Multiclass (0–4 Broken Bars) — Unseen Reps 8&ndash;9** | 81.22% | **98.78%** (`F1: 0.9878`) | Adjacent fault severities overlap in shallow trees |
+| **Multiclass Leave-One-Torque-Out (Unseen Loads)** | 37.18% mean | 59.68% mean | Bar-fault amplitude couples strongly with load torque |
 
-## 3. Theoretical Background: MCSA & Welch PSD
+### Domain-Shift & Perturbation Stress Audit (Unseen Reps 8&ndash;9)
 
-Broken rotor bar (BRB) faults create electrical asymmetry in squirrel-cage induction rotors, producing a backward rotating magnetic field at slip frequency $-s f_s$. This modulates stator currents and produces characteristic sideband harmonics:
+| Scenario | Decision Tree Binary Acc | SVM Binary Acc | Engineering Interpretation |
+| :--- | :---: | :---: | :--- |
+| Clean Unseen Recordings (`reps 8–9`) | **99.18%** | **99.59%** | Reference baseline |
+| Calibrated Sensor Gain &times;2.5 (matched `I_rated`) | **99.18%** | **99.59%** | Exact per-unit calibration invariance |
+| Uncalibrated Sensor Gain &times;1.5 / &times;0.5 | **99.18%** / **99.18%** | 81.63% / 80.41% | DT unaffected; SVM uses `load_current_pu` |
+| Additive Gaussian Noise (&sigma; = 0.05 A / 0.08 A) | 81.63% / 80.00% | 81.63% / 81.63% | Degrades smoothly under high broadband noise |
+| Synthetic 50 Hz Cross-Grid Test (`n=2`) | 50.00% | 50.00% | 50 Hz carrier & sideband detected, but classifier learned 60 Hz motor harmonic profile |
 
-$$f_{brb} = f_s (1 \pm 2ks), \quad k = 1, 2, 3 \dots$$
+### Latency, Resource Footprint & Cloud Baseline Comparison
 
-where:
-- $f_s$ = Fundamental supply frequency (60 Hz)
-- $s$ = Motor slip: $s = \frac{n_s - n_r}{n_s}$
-- $k$ = Harmonic index ($k=1$ represents primary sidebands)
+* **Measurement Transparency:** Edge latency and RAM usage below were measured directly on the development Linux host (`x86_64`, Python 3.13) plus single-core CPU affinity pinning (`os.sched_setaffinity`). **No live AWS EC2 network call or physical Raspberry Pi execution was run**—the AWS EC2 comparison column is a **simulated baseline** computed via `AWSCloudSimulator` using literature network parameters (`160 ± 35 ms` WAN RTT, `15 Mbps` uplink, `8.5 ms` server compute) from Walani & Doorsamy (2025).
 
-As mechanical torque increases ($0.5\text{ Nm} \to 4.0\text{ Nm}$), slip $s$ increases from $0.012$ to $0.054$, shifting the sidebands away from the carrier. The amplitude of these sidebands scales directly with the number of broken bars $n_b$ relative to total rotor bars ($N_r = 34$).
-
-### Interpretable Decision Boundary
-The trained Decision Tree identified a clear physical threshold in PSD feature space:
-```
-|--- sideband_mean_db_rel <= -31.16 dB
-|   |--- Healthy Rotor (Class 0)
-|--- sideband_mean_db_rel >  -31.16 dB
-|   |--- Broken Rotor Bar Fault (Class 1)
-```
+| Metric | Measured Local Edge (DT) | Single-Core Pinned Edge (DT) | Measured Local Edge (SVM) | Simulated Cloud Baseline (*Walani 2025 Model*) |
+| :--- | :---: | :---: | :---: | :---: |
+| **Mean Latency (150 runs)** | **0.844 ms** (`p95: 1.21 ms`) | **0.736 ms** (`p95: 0.87 ms`) | **0.938 ms** (`p95: 1.46 ms`) | 175.263 ms (`p95: 221.30 ms`) [Simulated] |
+| **Throughput** | **1,012.5 windows/sec** | &mdash; | &mdash; | Network RTT-bound (~5.7 windows/sec) |
+| **Memory Leak (300 cycles)** | **0.00 MB growth** (`225.7 MB` RSS) | &mdash; | &mdash; | Server-side |
+| **Continuous 2 kHz Bandwidth** | **0.625 KiB/day** (alarms only) | &mdash; | **0.625 KiB/day** | **659.2 MiB/day** (~19.31 GiB/month, 1 phase) |
 
 ---
 
-## 4. Repository Structure
+## 3. Repository Structure
 
 ```
 .
-├── README.md                      # Project documentation and architecture guide
-├── requirements.txt               # Python package dependencies
-├── config.py                      # Centralized configuration & motor specifications
-├── run_pipeline.py                # Master CLI executing phases 1 through 5
+├── config.py                      # Motor specs, nameplate calibration, DSP & zero-leakage split config
+├── run_pipeline.py                # Master CLI: ingestion, training, robustness audit, benchmarks & dashboard
 ├── data/
-│   ├── dataset_loader.py          # IEEE DataPort HDF5 loader & synthetic MCSA generator
-│   ├── raw/                       # Storage for IEEE DataPort benchmark files (.mat)
-│   └── processed/                 # Cached feature arrays & dataset numpy archives
+│   ├── dataset_loader.py          # IEEE DataPort HDF5 parser (with active-current gate) & synthetic MCSA generator
+│   ├── samples/                   # Lightweight (<150 KB) unseen IEEE sample bundle for portable ARM64 runs
+│   └── raw/ / processed/          # Local IEEE DataPort .mat archives and extracted .npz/.csv caches
 ├── dsp/
-│   ├── welch_psd.py               # SciPy Welch PSD extraction (MATLAB pwelch equivalent)
-│   └── feature_extractor.py       # 15 physical MCSA sideband & statistical features
+│   ├── welch_psd.py               # Single-pass Welch PSD (SciPy + bit-exact NumPy fallback, 50/60 Hz auto-detect)
+│   └── feature_extractor.py       # 15 per-unit, grid-frequency-normalized MCSA & statistical features
 ├── models/
-│   ├── train.py                   # scikit-learn SVM and Decision Tree training script
-│   ├── evaluate.py                # Metrics reporting, confusion matrices, and ROC
-│   └── saved_models/              # Exported serialized models (.joblib)
+│   ├── train.py                   # Recording-grouped SVM & DT training, LOTO validation & JSON tree export
+│   ├── evaluate.py                # Classification metrics & domain-shift perturbation audit (robustness_metrics.json)
+│   └── saved_models/              # Exported .joblib models and 1.1 KB portable JSON trees
 ├── edge/
-│   ├── edge_runtime.py            # Local offline inference engine for Raspberry Pi
-│   ├── cloud_simulator.py         # AWS EC2 cloud round-trip delay model
-│   ├── benchmark.py               # Empirical latency, CPU/RAM footprint & bandwidth suite
-│   └── deploy_pi.sh               # Turnkey installation script for Raspberry Pi 4
+│   ├── edge_runtime.py            # Offline single-pass diagnostic engine with standby current gate & CLI demo
+│   ├── portable_edge.py           # Zero-sklearn, NumPy-only ARM64/Termux edge inference runner
+│   ├── cloud_simulator.py         # Literature-parameterized WAN/AWS EC2 delay simulator
+│   ├── benchmark.py               # Latency, Linux single-core affinity, psutil RSS & bandwidth benchmarking
+│   └── deploy_pi.sh               # Optional ARM64 Raspberry Pi OS Bookworm/Trixie deployment & systemd setup
 ├── visualization/
-│   ├── plot_signals.py            # Generates waveforms, PSD spectra, and benchmark plots
-│   └── dashboard.py               # Standalone interactive HTML dashboard generator
-├── reports/
-│   ├── index.html                 # Interactive dashboard report with embedded charts
-│   ├── edge_vs_cloud_benchmark.json
-│   └── plots/                     # High-resolution publication figures (300 DPI)
+│   ├── plot_signals.py            # Generates 300-DPI matched-torque waveform, PSD, CM & benchmark charts
+│   └── dashboard.py               # Standalone interactive HTML report generator
 └── tests/
-    └── test_pipeline.py           # Automated unit and integration test suite (pytest)
+    └── test_pipeline.py           # Automated pytest suite (DSP parity, gain invariance, zero leakage, inference)
 ```
 
 ---
 
-## 5. Quickstart Guide
+## 4. Quickstart & Portable Execution
 
-### Prerequisites
-* Python 3.10+
-* Linux / macOS / Windows
-
-### Option A: Local Python Environment
+### Option A: Standard Local Environment (Linux / macOS / Windows)
 ```bash
-# 1. Clone the repository
 git clone https://github.com/chaos-152/edge-motor-fault-diagnosis.git
 cd edge-motor-fault-diagnosis
 
-# 2. Create and activate virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
-
-# 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Run the end-to-end pipeline
+# Run automated tests (zero-leakage split, gain invariance, standby gate, NumPy parity)
+pytest tests/ -v
+
+# Run full end-to-end training, robustness audit, benchmarks, and dashboard generation
 python run_pipeline.py
+
+# Inspect MCSA sideband physics across all load torques (0.5 to 4.0 Nm)
+python edge/edge_runtime.py --compare
 ```
 
-### Option B: Docker (Zero-Configuration Reproducibility)
-Run the entire pipeline in an isolated container without installing Python dependencies on your host:
+### Option B: Portable ARM64 / Android Termux Execution (NumPy Only)
+Because `dsp/welch_psd.py` and `edge/portable_edge.py` run with **Python + NumPy alone** and use the bundled `143 KB` unseen sample file (`data/samples/ieee_validation_samples.npz`), you can execute genuine ARM64 offline inference on an Android phone using Termux (or any slim Linux board) without installing `scikit-learn` or downloading the 7.3 GB dataset:
 
 ```bash
-# Clone the repository
+pkg install python python-numpy git
 git clone https://github.com/chaos-152/edge-motor-fault-diagnosis.git
 cd edge-motor-fault-diagnosis
+python edge/portable_edge.py --stream
+```
 
-# Build and run with Docker Compose (outputs mount directly to ./reports on your host)
+### Option C: Docker Containerization
+```bash
 docker compose up --build
 ```
-Or using standalone Docker:
-```bash
-docker build -t edge-motor-diagnosis .
-docker run --rm -v $(pwd)/reports:/app/reports edge-motor-diagnosis
-```
-
-### Running Automated Tests
-```bash
-pytest tests/ -v
-```
 
 ---
 
-## 6. Benchmark Dataset (IEEE DataPort)
+## 5. Known Scope & Limitations
 
-The empirical validation utilizes the open-access benchmark:
-* **Title:** *"Experimental database for detecting and diagnosing rotor broken bar in a three-phase induction motor"*
-* **Authors:** Aline Elly Treml, Rogério Andrade Flauzino, Marcelo Suetake, Narco Afonso Ravazzoli Maciejewski (University of São Paulo, 2020)
-* **DOI:** [10.21227/fmnm-bn95](https://dx.doi.org/10.21227/fmnm-bn95)
-
-### Dataset Structure
-The dataset contains empirical electrical and vibration measurements from a 1 HP, 4-pole, 60 Hz induction motor:
-* **Health Conditions:** Healthy (`rs`), 1 broken bar (`r1b`), 2 broken bars (`r2b`), 3 broken bars (`r3b`), 4 broken bars (`r4b`).
-* **Mechanical Loads:** 0.5 Nm, 1.0 Nm, 1.5 Nm, 2.0 Nm, 2.5 Nm, 3.0 Nm, 3.5 Nm, 4.0 Nm.
-* **Signals:** 3-phase stator currents ($I_a, I_b, I_c$) sampled at 50 kHz across 10 repetitions per condition.
-
-Place downloaded `.mat` files in `data/raw/`. The pipeline automatically parses them using `h5py`, extracts steady-state segments, and decimates to 2,000 Hz.
+1. **Single-Motor Benchmark Validation:** All empirical training uses Treml et al.'s `1 HP` (0.75 kW), 4-pole, 34-bar WEG induction motor. Deploying to motors with different horsepower, bar counts, or saturation harmonics requires updating `MOTOR_NOLOAD_CURRENT_A` / `MOTOR_RATED_CURRENT_A` in `config.py` and retraining or recalibrating against healthy baseline runs on the target machine.
+2. **Multiclass Cross-Torque Limits:** Broken rotor bar current modulation decreases sharply near zero load (`0.5 Nm`), making *exact bar count* (`1` vs `2` vs `3` vs `4` bars) strongly dependent on load torque (`59.7%` SVM LOTO mean vs `98.8%` in-distribution unseen recordings). In field deployments lacking shaft torque telemetry, binary fault detection is markedly more reliable than unseen-load severity counting.
+3. **Simulated Cloud & Host Hardware:** Local CPU latency (`~0.8 ms` on 13th-Gen x86_64) proves algorithm computational feasibility under sub-2 ms single-core execution budgets, while the `175.3 ms` cloud baseline represents a literature-parameterized WAN simulation rather than live EC2 instrumentation.
 
 ---
 
-## 7. Edge Deployment on Raspberry Pi 4
+## 6. Benchmark Dataset & Citations
 
-To deploy the diagnostic node on a Raspberry Pi 4 running Raspberry Pi OS:
-
-```bash
-# Run the automated deployment script
-bash edge/deploy_pi.sh
-```
-
-The script sets up the virtual environment, installs lightweight runtime dependencies, and registers a systemd service (`induction-motor-monitor.service`) to start headless monitoring automatically on boot.
-
-To run interactive inference manually:
-```bash
-source .venv_pi/bin/activate
-python edge/edge_runtime.py
-```
-
----
-
-## 8. References & Citations
-
-If using this implementation or benchmark in academic work, please cite:
-
-```bibtex
-@article{walani2025edge,
-  title={Edge vs. Cloud: Empirical Insights into Data-Driven Condition Monitoring},
-  author={Walani, Chikumbutso Christopher and Doorsamy, Wesley},
-  journal={Big Data and Cognitive Computing},
-  volume={9},
-  number={5},
-  pages={121},
-  year={2025},
-  publisher={MDPI},
-  doi={10.3390/bdcc9050121}
-}
-
-@dataset{treml2020experimental,
-  title={Experimental database for detecting and diagnosing rotor broken bar in a three-phase induction motor},
-  author={Treml, Aline Elly and Flauzino, Rog{\'e}rio Andrade and Suetake, Marcelo and Maciejewski, Narco Afonso Ravazzoli},
-  year={2020},
-  publisher={IEEE DataPort},
-  doi={10.21227/fmnm-bn95}
-}
-```
+* **Experimental Dataset:** Treml, A. E., Flauzino, R. A., Suetake, M., & Maciejewski, N. A. R. (2020). *Experimental database for detecting and diagnosing rotor broken bar in a three-phase induction motor*. IEEE DataPort. [DOI: 10.21227/fmnm-bn95](https://dx.doi.org/10.21227/fmnm-bn95).
+* **Reference Framework:** Walani, C. C., & Doorsamy, W. (2025). *Edge vs. Cloud: Empirical Insights into Data-Driven Condition Monitoring*. Big Data and Cognitive Computing, 9(5), 121. [DOI: 10.3390/bdcc9050121](https://doi.org/10.3390/bdcc9050121).
 
 ---
 

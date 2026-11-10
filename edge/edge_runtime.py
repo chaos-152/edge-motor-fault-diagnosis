@@ -20,22 +20,30 @@ from dsp.feature_extractor import MCSAFeatureExtractor
 
 class EdgeFaultClassifier:
     """
-    Lightweight, high-performance edge diagnostic engine for Raspberry Pi.
+    Lightweight, offline edge diagnostic engine targeting Linux / ARM64 edge nodes.
     """
 
     def __init__(
         self,
         model_type: str = "decision_tree",
         target_type: str = "binary",
-        models_dir: Path = config.MODELS_DIR
+        models_dir: Path = config.MODELS_DIR,
+        i_noload_a: float = config.MOTOR_NOLOAD_CURRENT_A,
+        i_rated_a: float = config.MOTOR_RATED_CURRENT_A,
+        min_active_current_a: float = config.MIN_ACTIVE_CURRENT_A
     ):
         self.model_type = model_type.lower()
         self.target_type = target_type.lower()
         self.models_dir = Path(models_dir)
+        self.min_active_current_a = float(min_active_current_a)
 
         # Initialize DSP pipeline
         self.psd_extractor = WelchPSDExtractor()
-        self.feature_extractor = MCSAFeatureExtractor(psd_extractor=self.psd_extractor)
+        self.feature_extractor = MCSAFeatureExtractor(
+            psd_extractor=self.psd_extractor,
+            i_noload_a=i_noload_a,
+            i_rated_a=i_rated_a
+        )
 
         # Load serialized model
         self.model = self._load_model()
@@ -63,18 +71,41 @@ class EdgeFaultClassifier:
         estimated_slip: Optional[float] = None
     ) -> Dict[str, Union[str, int, float, Dict]]:
         """
-        Executes complete end-to-end edge inference on a stator current window:
-        1. SciPy Welch PSD calculation.
-        2. MCSA physical sideband & statistical feature extraction.
+        Executes complete end-to-end offline edge inference on a stator current window:
+        1. Per-unit normalization & single-pass SciPy Welch PSD calculation.
+        2. MCSA physical sideband & grid-agnostic statistical feature extraction.
         3. Scikit-learn Classifier inference.
         4. Detailed latency profiling.
         """
         t0 = time.perf_counter()
 
-        # Step 1: PSD Computation
+        # Guard against unpowered motor or disconnected CT sensor (prevents normalizing 4 mA noise)
+        rms_val = float(np.sqrt(np.mean(stator_current ** 2)))
+        if rms_val < self.min_active_current_a:
+            total_ms = (time.perf_counter() - t0) * 1000.0
+            return {
+                "status": "Motor Off / Standby",
+                "prediction_class": -1,
+                "is_faulty": False,
+                "confidence": 1.0,
+                "latency": {
+                    "psd_ms": 0.0,
+                    "feature_extraction_ms": 0.0,
+                    "classifier_ms": total_ms,
+                    "total_edge_ms": total_ms,
+                },
+                "sideband_power_db": -55.0,
+                "fault_energy_ratio": 0.0,
+                "current_rms_a": rms_val,
+                "fundamental_freq_hz": 0.0,
+                "estimated_slip": 0.0,
+            }
+
+        # Step 1: Single-pass per-unit Welch PSD computation
         t_psd_start = time.perf_counter()
-        frequencies, psd_db = self.psd_extractor.compute_psd(stator_current, return_db=True)
-        _, psd_lin = self.psd_extractor.compute_psd(stator_current, return_db=False)
+        sig_pu = stator_current / max(rms_val, 1e-12)
+        frequencies, psd_lin = self.psd_extractor.compute_psd(sig_pu, return_db=False)
+        psd_db = 10.0 * np.log10(np.maximum(psd_lin, 1e-30))
         t_psd_ms = (time.perf_counter() - t_psd_start) * 1000.0
 
         # Step 2: Feature Extraction
@@ -118,7 +149,9 @@ class EdgeFaultClassifier:
             },
             "sideband_power_db": feat_dict["sideband_mean_db_rel"],
             "fault_energy_ratio": feat_dict["fault_band_energy_ratio"],
-            "current_rms_a": feat_dict["current_rms_a"]
+            "current_rms_a": feat_dict["current_rms_a"],
+            "fundamental_freq_hz": feat_dict["fundamental_freq_hz"],
+            "estimated_slip": feat_dict["estimated_slip"],
         }
 
 
@@ -127,17 +160,27 @@ if __name__ == "__main__":
     from data.dataset_loader import StatorCurrentDataset
 
     parser = argparse.ArgumentParser(description="Edge Fault Classifier Diagnostic Demo")
+    parser.add_argument("--model", type=str, default="decision_tree", choices=["decision_tree", "svm"])
     parser.add_argument("--torque", type=float, default=2.0, help="Mechanical load torque in Nm (0.5, 1.0, 2.0, 3.0, 4.0)")
     parser.add_argument("--severity", type=int, default=3, help="Fault severity to test (1 to 4 broken rotor bars)")
     parser.add_argument("--compare", action="store_true", help="Print comparative table across all load torque levels")
     args = parser.parse_args()
 
-    classifier = EdgeFaultClassifier(model_type="decision_tree", target_type="binary")
+    classifier = EdgeFaultClassifier(model_type=args.model, target_type="binary")
     dataset = StatorCurrentDataset()
     processed_file = config.PROCESSED_DATA_DIR / "stator_current_dataset.npz"
+    sample_file = config.SAMPLES_DIR / "ieee_validation_samples.npz"
 
-    if args.compare and processed_file.exists():
-        signals, labels_multi, labels_bin, metadata = dataset.load_processed_dataset()
+    signals = labels_bin = metadata = None
+    if processed_file.exists():
+        signals, _, labels_bin, metadata = dataset.load_processed_dataset()
+    elif sample_file.exists():
+        data_pack = np.load(sample_file, allow_pickle=True)
+        signals = data_pack["signals"]
+        labels_bin = data_pack["labels_bin"]
+        metadata = list(data_pack["metadata"])
+
+    if args.compare and signals is not None:
         print("\n" + "=" * 80)
         print(f"{'Torque':<10} | {'Healthy (0 BRB)':<18} | {f'Faulty ({args.severity} BRB)':<18} | {'Delta Elevation':<16} | {'Diagnosis'}")
         print("=" * 80)
@@ -152,11 +195,9 @@ if __name__ == "__main__":
         print("=" * 80)
         sys.exit(0)
 
-    if processed_file.exists():
-        signals, labels_multi, labels_bin, metadata = dataset.load_processed_dataset()
+    if signals is not None:
         h_idx = [i for i, m in enumerate(metadata) if m["load_torque_nm"] == args.torque and m["fault_severity"] == 0]
         f_idx = [i for i, m in enumerate(metadata) if m["load_torque_nm"] == args.torque and m["fault_severity"] == args.severity]
-
         idx_h = h_idx[0] if h_idx else int(np.where(labels_bin == 0)[0][0])
         idx_f = f_idx[0] if f_idx else int(np.where(labels_bin == 1)[0][0])
         sig_h = signals[idx_h]
@@ -169,19 +210,19 @@ if __name__ == "__main__":
         load_used = args.torque
         sev_used = args.severity
 
-    print(f"Initializing Edge Diagnostic Engine (Decision Tree) at {load_used} Nm Load...")
+    print(f"Initializing Edge Diagnostic Engine ({args.model}) at {load_used} Nm Load...")
 
-    # Test on Healthy Signal
     res_h = classifier.diagnose_waveform(sig_h)
     print(f"\n--- Diagnostic Result: Healthy Motor (0 BRB at {load_used} Nm) ---")
     print(f"Status:             {res_h['status']}")
+    print(f"Grid Fundamental:   {res_h['fundamental_freq_hz']:.2f} Hz")
     print(f"Sideband Relative:  {res_h['sideband_power_db']:.2f} dB")
     print(f"Total Edge Latency: {res_h['latency']['total_edge_ms']:.3f} ms")
 
-    # Test on Faulty Signal
     res_f = classifier.diagnose_waveform(sig_f)
     print(f"\n--- Diagnostic Result: Faulty Motor ({sev_used} BRB at {load_used} Nm) ---")
     print(f"Status:             {res_f['status']}")
+    print(f"Grid Fundamental:   {res_f['fundamental_freq_hz']:.2f} Hz")
     print(f"Sideband Relative:  {res_f['sideband_power_db']:.2f} dB")
     print(f"Sideband Elevation: {res_f['sideband_power_db'] - res_h['sideband_power_db']:+.2f} dB")
     print(f"Total Edge Latency: {res_f['latency']['total_edge_ms']:.3f} ms")

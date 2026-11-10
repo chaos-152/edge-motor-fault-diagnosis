@@ -12,10 +12,10 @@ echo "================================================================="
 echo "   Setting up Induction Motor Fault Diagnosis on Raspberry Pi   "
 echo "================================================================="
 
-# 1. System package dependencies for Raspberry Pi OS (Debian-based)
+# 1. System package dependencies for Raspberry Pi OS (Debian Bookworm / Trixie compatible)
 echo "[1/4] Checking and installing system packages..."
 sudo apt-get update -y
-sudo apt-get install -y python3-pip python3-venv python3-numpy python3-scipy libatlas-base-dev
+sudo apt-get install -y python3-pip python3-venv python3-numpy python3-scipy libopenblas-dev
 
 # 2. Setup isolated Virtual Environment on the Pi
 echo "[2/4] Setting up Python virtual environment..."

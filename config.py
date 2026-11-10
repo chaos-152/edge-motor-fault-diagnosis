@@ -17,18 +17,23 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 DATA_DIR = BASE_DIR / "data"
 RAW_DATA_DIR = DATA_DIR / "raw"
 PROCESSED_DATA_DIR = DATA_DIR / "processed"
+SAMPLES_DIR = DATA_DIR / "samples"
 MODELS_DIR = BASE_DIR / "models" / "saved_models"
 REPORTS_DIR = BASE_DIR / "reports"
 PLOTS_DIR = REPORTS_DIR / "plots"
 
-for directory in [RAW_DATA_DIR, PROCESSED_DATA_DIR, MODELS_DIR, REPORTS_DIR, PLOTS_DIR]:
+for directory in [RAW_DATA_DIR, PROCESSED_DATA_DIR, SAMPLES_DIR, MODELS_DIR, REPORTS_DIR, PLOTS_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
 
 # Electrical Motor Parameters (Treml et al., 2020 benchmark setup)
-SUPPLY_FREQUENCY_HZ = 60.0       # Fundamental electrical frequency (60 Hz grid)
-NUM_ROTOR_BARS = 34              # Total squirrel cage rotor bars
-PAIRS_OF_POLES = 2               # 4-pole machine (synchronous speed = 1800 RPM at 60 Hz)
-RATED_POWER_KW = 0.75            # 1 HP / 0.75 kW induction motor
+SUPPLY_FREQUENCY_HZ = 60.0            # Nominal grid frequency (used as fallback)
+SUPPLY_FREQUENCY_AUTO_DETECT = True   # Auto-detects 50 Hz or 60 Hz fundamental in [45, 65] Hz
+NUM_ROTOR_BARS = 34                   # Total squirrel cage rotor bars
+PAIRS_OF_POLES = 2                    # 4-pole machine (synchronous speed = 1800 RPM at 60 Hz)
+RATED_POWER_KW = 0.75                 # 1 HP / 0.75 kW induction motor
+MOTOR_NOLOAD_CURRENT_A = 1.0          # Calibrated no-load phase RMS current (Amperes)
+MOTOR_RATED_CURRENT_A = 1.7           # Calibrated full-load phase RMS current (Amperes)
+MIN_ACTIVE_CURRENT_A = 0.15           # Minimum RMS threshold indicating powered running motor
 
 # Operational Loads & Corresponding Nominal Slips
 # Load conditions: 0.5 Nm, 1.0 Nm, 2.0 Nm, 3.0 Nm, 4.0 Nm (Treml et al., 2020)
@@ -76,10 +81,11 @@ BINARY_CLASSES = {
     1: "Faulty (Broken Rotor Bar)"
 }
 
-# Machine Learning Configurations
+# Machine Learning Configurations (Recording-grouped to prevent within-recording leakage)
 RANDOM_STATE = 42
 TEST_SPLIT_RATIO = 0.20
 CV_FOLDS = 5
+HOLDOUT_REPETITIONS = [8, 9]      # Strictly unseen experimental runs (20% of recordings)
 
 # SVM Hyperparameters
 SVM_CONFIG = {
@@ -98,12 +104,12 @@ DECISION_TREE_CONFIG = {
     "random_state": RANDOM_STATE
 }
 
-# Cloud Simulation Parameters (AWS EC2 baseline from Walani & Doorsamy 2025)
-# RTT latency: network transmission time for raw 50kS/s signal batch + remote EC2 compute
+# Simulated Cloud Baseline Parameters (literature-parameterized from Walani & Doorsamy, 2025)
+# NOTE: Used exclusively for AWSCloudSimulator modeling; NOT a live AWS EC2 network benchmark.
 CLOUD_SIMULATION = {
-    "network_rtt_mean_ms": 160.0,     # Typical 4G/industrial Wi-Fi round-trip to AWS us-east
+    "network_rtt_mean_ms": 160.0,      # Simulated WAN/4G round-trip delay
     "network_rtt_std_ms": 35.0,
-    "raw_signal_upload_size_kb": 200.0, # 1 sec of 50kHz float32 ~ 200 KB
-    "bandwidth_mbps": 15.0,            # Typical industrial wireless uplink
-    "ec2_compute_time_ms": 8.5         # AWS c5.large compute time
+    "raw_signal_upload_size_kb": 200.0,
+    "bandwidth_mbps": 15.0,            # Assumed industrial wireless uplink speed
+    "ec2_compute_time_ms": 8.5         # Modeled cloud compute delay
 }

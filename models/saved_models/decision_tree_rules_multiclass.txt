@@ -1,79 +1,76 @@
-|--- fault_band_energy_ratio <= 0.02
+|--- fundamental_energy_ratio <= 0.98
+|   |--- sideband_asymmetry_db <= 2.12
+|   |   |--- load_current_pu <= 0.64
+|   |   |   |--- spectral_entropy <= 0.26
+|   |   |   |   |--- fundamental_energy_ratio <= 0.98
+|   |   |   |   |   |--- class: 2
+|   |   |   |   |--- fundamental_energy_ratio >  0.98
+|   |   |   |   |   |--- class: 0
+|   |   |   |--- spectral_entropy >  0.26
+|   |   |   |   |--- class: 3
+|   |   |--- load_current_pu >  0.64
+|   |   |   |--- spectral_entropy <= 0.26
+|   |   |   |   |--- spectral_flatness <= 0.00
+|   |   |   |   |   |--- sideband_right_db_rel <= -41.26
+|   |   |   |   |   |   |--- class: 0
+|   |   |   |   |   |--- sideband_right_db_rel >  -41.26
+|   |   |   |   |   |   |--- class: 1
+|   |   |   |   |--- spectral_flatness >  0.00
+|   |   |   |   |   |--- sideband_mean_db_rel <= -34.95
+|   |   |   |   |   |   |--- class: 2
+|   |   |   |   |   |--- sideband_mean_db_rel >  -34.95
+|   |   |   |   |   |   |--- class: 3
+|   |   |   |--- spectral_entropy >  0.26
+|   |   |   |   |--- sideband_right_db_rel <= -33.02
+|   |   |   |   |   |--- spectral_crest_factor <= 165.07
+|   |   |   |   |   |   |--- class: 4
+|   |   |   |   |   |--- spectral_crest_factor >  165.07
+|   |   |   |   |   |   |--- class: 1
+|   |   |   |   |--- sideband_right_db_rel >  -33.02
+|   |   |   |   |   |--- spectral_crest_factor <= 166.76
+|   |   |   |   |   |   |--- class: 4
+|   |   |   |   |   |--- spectral_crest_factor >  166.76
+|   |   |   |   |   |   |--- class: 2
+|   |--- sideband_asymmetry_db >  2.12
+|   |   |--- spectral_entropy <= 0.26
+|   |   |   |--- spectral_flatness <= 0.00
+|   |   |   |   |--- current_crest_factor <= 1.53
+|   |   |   |   |   |--- spectral_entropy <= 0.26
+|   |   |   |   |   |   |--- class: 1
+|   |   |   |   |   |--- spectral_entropy >  0.26
+|   |   |   |   |   |   |--- class: 2
+|   |   |   |   |--- current_crest_factor >  1.53
+|   |   |   |   |   |--- current_kurtosis <= -1.47
+|   |   |   |   |   |   |--- class: 3
+|   |   |   |   |   |--- current_kurtosis >  -1.47
+|   |   |   |   |   |   |--- class: 2
+|   |   |   |--- spectral_flatness >  0.00
+|   |   |   |   |--- spectral_spread_ratio <= 0.17
+|   |   |   |   |   |--- class: 3
+|   |   |   |   |--- spectral_spread_ratio >  0.17
+|   |   |   |   |   |--- class: 4
+|   |   |--- spectral_entropy >  0.26
+|   |   |   |--- class: 4
+|--- fundamental_energy_ratio >  0.98
 |   |--- spectral_flatness <= 0.00
-|   |   |--- current_kurtosis <= -1.67
+|   |   |--- current_shape_factor <= 1.07
 |   |   |   |--- current_crest_factor <= 1.41
 |   |   |   |   |--- class: 1
 |   |   |   |--- current_crest_factor >  1.41
 |   |   |   |   |--- class: 4
-|   |   |--- current_kurtosis >  -1.67
+|   |   |--- current_shape_factor >  1.07
 |   |   |   |--- class: 0
 |   |--- spectral_flatness >  0.00
-|   |   |--- spectral_spread_hz <= 11.04
+|   |   |--- current_crest_factor <= 1.55
 |   |   |   |--- spectral_flatness <= 0.00
 |   |   |   |   |--- class: 1
 |   |   |   |--- spectral_flatness >  0.00
-|   |   |   |   |--- sideband_left_db_rel <= -31.94
-|   |   |   |   |   |--- class: 2
-|   |   |   |   |--- sideband_left_db_rel >  -31.94
-|   |   |   |   |   |--- class: 2
-|   |   |--- spectral_spread_hz >  11.04
-|   |   |   |--- fundamental_power_db <= 0.10
+|   |   |   |   |--- class: 2
+|   |   |--- current_crest_factor >  1.55
+|   |   |   |--- spectral_spread_ratio <= 0.19
 |   |   |   |   |--- spectral_flatness <= 0.00
-|   |   |   |   |   |--- current_shape_factor <= 1.12
-|   |   |   |   |   |   |--- class: 1
-|   |   |   |   |   |--- current_shape_factor >  1.12
-|   |   |   |   |   |   |--- class: 2
+|   |   |   |   |   |--- class: 2
 |   |   |   |   |--- spectral_flatness >  0.00
 |   |   |   |   |   |--- class: 3
-|   |   |   |--- fundamental_power_db >  0.10
+|   |   |   |--- spectral_spread_ratio >  0.19
 |   |   |   |   |--- class: 4
-|--- fault_band_energy_ratio >  0.02
-|   |--- current_crest_factor <= 1.55
-|   |   |--- spectral_entropy <= 0.26
-|   |   |   |--- spectral_flatness <= 0.00
-|   |   |   |   |--- current_rms_a <= 1.06
-|   |   |   |   |   |--- class: 2
-|   |   |   |   |--- current_rms_a >  1.06
-|   |   |   |   |   |--- spectral_flatness <= 0.00
-|   |   |   |   |   |   |--- class: 1
-|   |   |   |   |   |--- spectral_flatness >  0.00
-|   |   |   |   |   |   |--- class: 2
-|   |   |   |--- spectral_flatness >  0.00
-|   |   |   |   |--- spectral_entropy <= 0.26
-|   |   |   |   |   |--- class: 2
-|   |   |   |   |--- spectral_entropy >  0.26
-|   |   |   |   |   |--- class: 3
-|   |   |--- spectral_entropy >  0.26
-|   |   |   |--- current_rms_a <= 1.09
-|   |   |   |   |--- spectral_spread_hz <= 13.70
-|   |   |   |   |   |--- class: 2
-|   |   |   |   |--- spectral_spread_hz >  13.70
-|   |   |   |   |   |--- class: 3
-|   |   |   |--- current_rms_a >  1.09
-|   |   |   |   |--- spectral_spread_hz <= 13.56
-|   |   |   |   |   |--- sideband_left_db_rel <= -31.34
-|   |   |   |   |   |   |--- class: 1
-|   |   |   |   |   |--- sideband_left_db_rel >  -31.34
-|   |   |   |   |   |   |--- class: 4
-|   |   |   |   |--- spectral_spread_hz >  13.56
-|   |   |   |   |   |--- spectral_spread_hz <= 13.62
-|   |   |   |   |   |   |--- class: 4
-|   |   |   |   |   |--- spectral_spread_hz >  13.62
-|   |   |   |   |   |   |--- class: 4
-|   |--- current_crest_factor >  1.55
-|   |   |--- current_rms_a <= 1.25
-|   |   |   |--- spectral_flatness <= 0.00
-|   |   |   |   |--- sideband_left_db_rel <= -13.72
-|   |   |   |   |   |--- class: 2
-|   |   |   |   |--- sideband_left_db_rel >  -13.72
-|   |   |   |   |   |--- class: 1
-|   |   |   |--- spectral_flatness >  0.00
-|   |   |   |   |--- current_crest_factor <= 1.57
-|   |   |   |   |   |--- class: 3
-|   |   |   |   |--- current_crest_factor >  1.57
-|   |   |   |   |   |--- spectral_centroid_hz <= 125.04
-|   |   |   |   |   |   |--- class: 0
-|   |   |   |   |   |--- spectral_centroid_hz >  125.04
-|   |   |   |   |   |   |--- class: 0
-|   |   |--- current_rms_a >  1.25
-|   |   |   |--- class: 4

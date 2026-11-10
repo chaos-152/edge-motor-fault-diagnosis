@@ -17,6 +17,7 @@ from dsp.welch_psd import WelchPSDExtractor
 from dsp.feature_extractor import MCSAFeatureExtractor
 from models.train import ModelTrainer
 from edge.edge_runtime import EdgeFaultClassifier
+from edge.portable_edge import PortableDecisionTreeNode, diagnose_portable
 from edge.cloud_simulator import AWSCloudSimulator
 
 
@@ -93,12 +94,17 @@ def test_edge_runtime_inference(dataset):
     classifier = EdgeFaultClassifier(model_type="decision_tree", target_type="binary")
 
     processed_file = config.PROCESSED_DATA_DIR / "stator_current_dataset.npz"
+    sample_file = config.SAMPLES_DIR / "ieee_validation_samples.npz"
     if processed_file.exists():
-        signals, _, labels_bin, _ = dataset.load_processed_dataset()
-        idx_h = int(np.where(labels_bin == 0)[0][0])
-        idx_f = int(np.where(labels_bin == 1)[0][0])
-        sig_healthy = signals[idx_h]
-        sig_faulty = signals[idx_f]
+        signals, _, labels_bin, meta = dataset.load_processed_dataset()
+        idx_h = int(next(i for i, m in enumerate(meta) if m["fault_severity"] == 0 and m.get("repetition") in config.HOLDOUT_REPETITIONS))
+        idx_f = int(next(i for i, m in enumerate(meta) if m["fault_severity"] >= 3 and m.get("repetition") in config.HOLDOUT_REPETITIONS))
+        sig_healthy, sig_faulty = signals[idx_h], signals[idx_f]
+    elif sample_file.exists():
+        pack = np.load(sample_file, allow_pickle=True)
+        idx_h = int(np.where(pack["labels_bin"] == 0)[0][0])
+        idx_f = int(np.where(pack["labels_bin"] == 1)[0][0])
+        sig_healthy, sig_faulty = pack["signals"][idx_h], pack["signals"][idx_f]
     else:
         sig_healthy, _ = dataset.generate_single_signal(fault_severity=0, load_torque_nm=2.0)
         sig_faulty, _ = dataset.generate_single_signal(fault_severity=3, load_torque_nm=2.0)
@@ -115,6 +121,79 @@ def test_edge_runtime_inference(dataset):
     # Edge Latency constraint: sub-50ms budget for edge execution
     assert res_h["latency"]["total_edge_ms"] < 50.0
     assert res_f["latency"]["total_edge_ms"] < 50.0
+
+
+def test_numpy_welch_parity_and_50hz_autodetect(psd_extractor):
+    """Verifies pure-NumPy Welch matches SciPy and auto-detects both 50 Hz and 60 Hz grids."""
+    t = np.linspace(0, config.WINDOW_DURATION_SEC, int(config.TARGET_SAMPLING_RATE_HZ * config.WINDOW_DURATION_SEC), endpoint=False)
+    sig_50 = 2.0 * np.sin(2 * np.pi * 50.0 * t) + 0.02 * np.random.default_rng(1).normal(size=len(t))
+
+    f_sp, p_sp = psd_extractor.compute_psd(sig_50, return_db=False)
+    f_np, p_np = psd_extractor._numpy_welch(sig_50)
+    assert np.allclose(f_sp, f_np)
+    assert np.max(np.abs(p_sp - p_np) / (p_sp + 1e-12)) < 1e-10
+
+    peaks_50 = psd_extractor.find_spectral_peaks(f_sp, 10.0 * np.log10(np.maximum(p_sp, 1e-30)))
+    assert abs(peaks_50["fundamental_freq_hz"] - 50.0) < 1.0
+
+
+def test_per_unit_gain_invariance(dataset):
+    """Verifies calibrated sensor gain scaling produces invariant feature vectors."""
+    sig, _ = dataset.generate_single_signal(fault_severity=2, load_torque_nm=3.0, rng=np.random.default_rng(7))
+    ext_base = MCSAFeatureExtractor()
+    ext_scaled = MCSAFeatureExtractor(
+        i_noload_a=config.MOTOR_NOLOAD_CURRENT_A * 3.0,
+        i_rated_a=config.MOTOR_RATED_CURRENT_A * 3.0,
+    )
+    vec_base, _ = ext_base.extract_from_signal(sig, estimated_slip=0.04)
+    vec_scaled, _ = ext_scaled.extract_from_signal(sig * 3.0, estimated_slip=0.04)
+    assert np.allclose(vec_base, vec_scaled, atol=1e-4)
+
+
+def test_motor_off_standby_gate():
+    """Verifies near-zero current waveforms trigger Standby instead of false broken-bar alarms."""
+    classifier = EdgeFaultClassifier(model_type="decision_tree", target_type="binary")
+    noise_only = np.random.default_rng(0).normal(0.0, 0.004, size=4000).astype(np.float32)
+    res = classifier.diagnose_waveform(noise_only)
+    assert res["status"] == "Motor Off / Standby"
+    assert res["is_faulty"] is False
+    assert res["prediction_class"] == -1
+
+
+def test_recording_grouped_split_zero_leakage():
+    """Verifies train/test split never places windows from the same recording in both sets."""
+    import pandas as pd
+    rng = np.random.default_rng(42)
+    X = rng.normal(size=(100, 15)).astype(np.float32)
+    y = np.array(([0] * 50) + ([1] * 50))
+    reps = np.tile(np.repeat(np.arange(10), 5), 2)
+    rec_ids = np.array([f"{y[i]}_{reps[i]}" for i in range(100)])
+    df_meta = pd.DataFrame({"repetition": reps, "recording_id": rec_ids})
+
+    _, _, _, _, g_train, g_test, mode = ModelTrainer._split_by_recording(X, y, df_meta)
+    assert len(set(g_train).intersection(set(g_test))) == 0
+    assert "independent_repetitions" in mode
+
+
+def test_portable_tree_parity(dataset):
+    """Verifies JSON portable Decision Tree matches scikit-learn EdgeFaultClassifier outputs."""
+    sklearn_clf = EdgeFaultClassifier(model_type="decision_tree", target_type="binary")
+    portable_tree = PortableDecisionTreeNode(config.MODELS_DIR / "decision_tree_portable.json")
+    ext = MCSAFeatureExtractor()
+
+    sample_file = config.SAMPLES_DIR / "ieee_validation_samples.npz"
+    if sample_file.exists():
+        pack = np.load(sample_file, allow_pickle=True)
+        signals = pack["signals"]
+    else:
+        sig_h, _ = dataset.generate_single_signal(fault_severity=0, load_torque_nm=2.0)
+        sig_f, _ = dataset.generate_single_signal(fault_severity=3, load_torque_nm=3.0)
+        signals = [sig_h, sig_f]
+
+    for sig in signals:
+        r_sk = sklearn_clf.diagnose_waveform(sig)
+        r_pt = diagnose_portable(sig, portable_tree, ext, target_type="binary")
+        assert r_sk["prediction_class"] == r_pt["prediction_class"]
 
 
 def test_cloud_simulator():
